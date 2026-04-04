@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Figura</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <style>
+    :root {
+      --bg:           #f8f8f6;
+      --fg:           #1a1a1a;
+      --staff-line:   #aaa;
+      --note-fill:    #1a1a1a;
+      --note-text:    #f8f8f6;
+      --beam:         #1a1a1a;
+      --chord:        #555;
+      --label:        #bbb;
+      --accent:       #d946a8;
+      --ctrl-bg:      #efefed;
+      --ctrl-border:  #d0d0cc;
+      --shadow:       rgba(0,0,0,0.08);
+    }
+    [data-theme="dark"] {
+      --bg:           #16161f;
+      --fg:           #e8e8e0;
+      --staff-line:   #555;
+      --note-fill:    #e8e8e0;
+      --note-text:    #16161f;
+      --beam:         #e8e8e0;
+      --chord:        #9d9d90;
+      --label:        #444;
+      --accent:       #f472b6;
+      --ctrl-bg:      #22222e;
+      --ctrl-border:  #333344;
+      --shadow:       rgba(0,0,0,0.4);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem 3rem;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    header {
+      width: 100%;
+      max-width: 680px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1.75rem;
+    }
+    .wordmark {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      opacity: 0.9;
+    }
+    .wordmark span { color: var(--accent); }
+
+    /* ── Controls ─────────────────────────────────────────────────────── */
+    .controls {
+      width: 100%;
+      max-width: 680px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+    .ctrl-group {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.5;
+    }
+    select {
+      background: var(--ctrl-bg);
+      color: var(--fg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 5px;
+      padding: 0.32rem 0.6rem;
+      font-size: 0.88rem;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    select:focus { border-color: var(--accent); }
+
+    .theme-btn {
+      background: var(--ctrl-bg);
+      color: var(--fg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 5px;
+      padding: 0.32rem 0.75rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: border-color 0.15s;
+      margin-left: auto;
+    }
+    .theme-btn:hover { border-color: var(--accent); }
+
+    /* ── Score ────────────────────────────────────────────────────────── */
+    .song-meta {
+      width: 100%;
+      max-width: 680px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.4rem;
+      padding: 0 2px;
+    }
+    .song-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      opacity: 0.7;
+      letter-spacing: 0.03em;
+    }
+    .song-key {
+      font-size: 0.75rem;
+      opacity: 0.4;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .score-wrap {
+      width: 100%;
+      max-width: 680px;
+      background: var(--bg);
+      border-radius: 10px;
+      box-shadow: 0 2px 18px var(--shadow);
+      padding: 0.5rem 0 0.75rem;
+      border: 1px solid var(--ctrl-border);
+      overflow: hidden;
+    }
+    .score-wrap svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* ── Footer ───────────────────────────────────────────────────────── */
+    footer {
+      margin-top: 2rem;
+      font-size: 0.7rem;
+      opacity: 0.3;
+      letter-spacing: 0.06em;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">Fi<span>g</span>ura</div>
+  <button class="theme-btn" id="themeBtn">Dark</button>
+</header>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <label for="keySelect">Key</label>
+    <select id="keySelect">
+      <option value="C">C</option>
+      <option value="Db">D♭</option>
+      <option value="D">D</option>
+      <option value="Eb">E♭</option>
+      <option value="E">E</option>
+      <option value="F">F</option>
+      <option value="Gb">G♭</option>
+      <option value="G" selected>G</option>
+      <option value="Ab">A♭</option>
+      <option value="A">A</option>
+      <option value="Bb">B♭</option>
+      <option value="B">B</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label for="formatSelect">Chords</label>
+    <select id="formatSelect">
+      <option value="nashville">Nashville  1, 4, 5</option>
+      <option value="roman">Roman  I, IV, V</option>
+      <option value="named">Named  C, F, G</option>
+    </select>
+  </div>
+</div>
+
+<div class="song-meta">
+  <span class="song-title">Christ Be Magnified</span>
+  <span class="song-key" id="keyLabel">Key of G · Bar 1</span>
+</div>
+
+<div class="score-wrap" id="scoreWrap"></div>
+
+<footer>Figura · Scale Degree Notation v0.2 · PoC</footer>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DOC = {
+  title: 'Christ Be Magnified',
+  key: 'G',
+  keyMode: 'major',
+  defaultTimeSignature: { beats: 4, division: 4 },
+  bars: [
+    {
+      id: 'bar-001',
+      index: 0,
+      timeSignature: { beats: 4, division: 4 },
+      beamGrouping: [2, 2],
+      chordSymbol: {
+        degree: 1, accidental: null, quality: 'major', extensions: [],
+        bass: null, position: 'below', beatOffset: 0
+      },
+      notes: [
+        // Beat 1: beamed quaver pair (degrees 3 + 5)
+        {
+          id: 'n-001', type: 'note',
+          degree: 3, accidental: null, octaveShift: 0,
+          duration: { base: 'quaver', dots: 0, tuplet: null },
+          tie: { type: null }, beam: { type: 'start', groupId: 'bg-001' },
+          stem: 'up', midi: { pitch: 59 }
+        },
+        {
+          id: 'n-002', type: 'note',
+          degree: 5, accidental: null, octaveShift: 0,
+          duration: { base: 'quaver', dots: 0, tuplet: null },
+          tie: { type: null }, beam: { type: 'end', groupId: 'bg-001' },
+          stem: 'up', midi: { pitch: 62 }
+        },
+        // Beat 2: crotchet, degree 1 high (octaveShift 1)
+        {
+          id: 'n-003', type: 'note',
+          degree: 1, accidental: null, octaveShift: 1,
+          duration: { base: 'crotchet', dots: 0, tuplet: null },
+          tie: { type: null }, beam: { type: null, groupId: null },
+          stem: 'down', midi: { pitch: 67 }
+        },
+        // Beats 3–4: minim rest to complete the bar
+        {
+          id: 'r-001', type: 'rest',
+          degree: null, accidental: null, octaveShift: null,
+          duration: { base: 'minim', dots: 0, tuplet: null },
+          tie: { type: null }, beam: { type: null, groupId: null },
+          stem: null, midi: null
+        }
+      ],
+      displayOptions: { showReferenceLines: true, referenceLineStyle: 'dashed', size: 1.0 }
+    }
+  ]
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KEY / CHORD LOGIC
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Major scale note names per key
+const KEY_SCALES = {
+  'C':  ['C','D','E','F','G','A','B'],
+  'Db': ['D♭','E♭','F','G♭','A♭','B♭','C'],
+  'D':  ['D','E','F♯','G','A','B','C♯'],
+  'Eb': ['E♭','F','G','A♭','B♭','C','D'],
+  'E':  ['E','F♯','G♯','A','B','C♯','D♯'],
+  'F':  ['F','G','A','B♭','C','D','E'],
+  'Gb': ['G♭','A♭','B♭','C♭','D♭','E♭','F'],
+  'G':  ['G','A','B','C','D','E','F♯'],
+  'Ab': ['A♭','B♭','C','D♭','E♭','F','G'],
+  'A':  ['A','B','C♯','D','E','F♯','G♯'],
+  'Bb': ['B♭','C','D','E♭','F','G','A'],
+  'B':  ['B','C♯','D♯','E','F♯','G♯','A♯'],
+};
+
+// Semitone values per key root
+const KEY_SEMI = {
+  'C':0,'Db':1,'D':2,'Eb':3,'E':4,'F':5,
+  'Gb':6,'G':7,'Ab':8,'A':9,'Bb':10,'B':11
+};
+const MAJOR_INTERVALS = [0,2,4,5,7,9,11];
+
+function degreeToNoteName(key, degree, accidental) {
+  const scale = KEY_SCALES[key] || KEY_SCALES['C'];
+  const base = scale[(degree - 1) % 7];
+  if (!accidental) return base;
+  if (accidental === 'flat')  return base + '♭';
+  if (accidental === 'sharp') return base + '♯';
+  return base;
+}
+
+// Get the named note for a bass that is stored as chord-relative degree
+function bassToNoteName(key, chordDeg, chordAcc, bass, format) {
+  const rootSemi = KEY_SEMI[key] ?? 0;
+  const scaleSemis = MAJOR_INTERVALS.map(s => (rootSemi + s) % 12);
+
+  // Chord root semitone
+  let chordRootSemi = scaleSemis[(chordDeg - 1) % 7];
+  if (chordAcc === 'sharp') chordRootSemi = (chordRootSemi + 1) % 12;
+  if (chordAcc === 'flat')  chordRootSemi = (chordRootSemi + 11) % 12;
+
+  // Bass semitone = chord root + chord's own major scale interval for bass.degree
+  let bassSemi = (chordRootSemi + MAJOR_INTERVALS[(bass.degree - 1) % 7]) % 12;
+  if (bass.accidental === 'sharp') bassSemi = (bassSemi + 1) % 12;
+  if (bass.accidental === 'flat')  bassSemi = (bassSemi + 11) % 12;
+
+  if (format === 'named') {
+    // Match bassSemi against the home key scale first for clean enharmonic
+    const scale = KEY_SCALES[key] || KEY_SCALES['C'];
+    for (let i = 0; i < 7; i++) {
+      if (scaleSemis[i] === bassSemi) return scale[i];
+    }
+    // Fallback: chromatic name
+    const CHROM = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+    return CHROM[bassSemi];
+  }
+
+  if (format === 'roman') {
+    const ROMAN = ['I','II','III','IV','V','VI','VII'];
+    const idx = scaleSemis.indexOf(bassSemi);
+    return idx >= 0 ? ROMAN[idx].toLowerCase() : '?';
+  }
+
+  // nashville
+  const idx = scaleSemis.indexOf(bassSemi);
+  return idx >= 0 ? String(idx + 1) : '?';
+}
+
+function formatChordSymbol(chord, format, key) {
+  const { degree, accidental, quality, extensions, bass } = chord;
+  const ROMAN = ['','I','II','III','IV','V','VI','VII'];
+  const accStr = accidental === 'flat' ? '♭' : accidental === 'sharp' ? '♯' : '';
+
+  let root = '';
+  if (format === 'nashville') {
+    root = accStr + degree;
+    if      (quality === 'minor')      root += 'm';
+    else if (quality === 'diminished') root += '°';
+    else if (quality === 'augmented')  root += '+';
+    else if (quality === 'dominant')   root += '7';
+  } else if (format === 'roman') {
+    let num = ROMAN[degree] || String(degree);
+    const lower = ['minor','diminished','halfDiminished'].includes(quality);
+    if (lower) num = num.toLowerCase();
+    root = accStr + num;
+    if      (quality === 'diminished')     root += '°';
+    else if (quality === 'augmented')      root += '+';
+    else if (quality === 'halfDiminished') root += 'ø';
+  } else { // named
+    root = degreeToNoteName(key, degree, accidental);
+    if      (quality === 'minor')      root += 'm';
+    else if (quality === 'diminished') root += '°';
+    else if (quality === 'augmented')  root += '+';
+  }
+
+  const extStr = (extensions || []).join('');
+  let result = root + extStr;
+
+  if (bass) {
+    result += '/' + bassToNoteName(key, degree, accidental, bass, format);
+  }
+
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SVG RENDERER
+// ═══════════════════════════════════════════════════════════════════════════
+
+const NS = 'http://www.w3.org/2000/svg';
+
+function el(tag, attrs, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+// ── Layout constants ──────────────────────────────────────────────────────
+const L = {
+  W:          640,   // viewBox width
+  H:          210,   // viewBox height
+  LEFT:        52,   // x of first barline
+  RIGHT:      620,   // x of last barline
+  UPPER_Y:     62,   // y of upper reference line (degree 8)
+  LOWER_Y:    138,   // y of lower reference line (degree 1)
+  CHORD_Y:    175,   // y of chord symbol text
+  STEM_LEN:    36,   // stem length in px
+  NOTE_R:      12,   // notehead circle radius
+  TS_X:        68,   // x centre for time signature numerals
+  NOTE_START:  92,   // x where notes begin (after time sig)
+};
+
+const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
+
+function noteY(degree, octaveShift) {
+  // degree 1 → LOWER_Y, degree 8 → UPPER_Y, linear
+  const base = L.LOWER_Y - ((degree - 1) / 7) * SPAN;
+  return base - octaveShift * SPAN;
+}
+
+const BEAT_VAL = {
+  whole: 4, minim: 2, crotchet: 1, quaver: 0.5, semiquaver: 0.25, demisemiquaver: 0.125
+};
+
+// Assign beat-proportional x positions to all notes in a bar
+function layoutNotes(notes, ts) {
+  const noteW = L.RIGHT - L.NOTE_START;
+  let beat = 0;
+  return notes.map(n => {
+    const dur = BEAT_VAL[n.duration.base] * (n.duration.dots === 1 ? 1.5 : n.duration.dots === 2 ? 1.75 : 1);
+    const x = L.NOTE_START + ((beat + dur / 2) / ts.beats) * noteW;
+    beat += dur;
+    return { n, x, dur };
+  });
+}
+
+// ── Drawing helpers ───────────────────────────────────────────────────────
+
+function drawStem(svg, x, noteY, dir, len) {
+  // dir: -1 = up, +1 = down
+  svg.appendChild(el('line', {
+    x1: x, y1: noteY + dir * L.NOTE_R * 0.6,
+    x2: x, y2: noteY + dir * (L.NOTE_R * 0.6 + len),
+    stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round'
+  }));
+}
+
+function drawFlag(svg, x, tipY, dir) {
+  // dir: -1 = up (flag hangs down from tip), +1 = down (flag curves up from tip)
+  const fy = tipY + dir * 4;
+  const d = dir === -1
+    ? `M ${x} ${tipY} C ${x+14} ${tipY+8} ${x+16} ${tipY+20} ${x+6} ${tipY+28}`
+    : `M ${x} ${tipY} C ${x+14} ${tipY-8} ${x+16} ${tipY-20} ${x+6} ${tipY-28}`;
+  svg.appendChild(el('path', { d, fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round' }));
+}
+
+function drawNotehead(svg, x, y, duration, label) {
+  const isWhole  = duration === 'whole';
+  const isMinim  = duration === 'minim';
+  const isHollow = isWhole || isMinim;
+
+  if (!isWhole) {
+    svg.appendChild(el('circle', {
+      cx: x, cy: y, r: L.NOTE_R,
+      fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
+      stroke: 'var(--note-fill)', 'stroke-width': 1.8
+    }));
+  }
+
+  // Degree label
+  const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
+  svg.appendChild(el('text', {
+    x, y,
+    fill: textFill,
+    'font-size': label.length > 2 ? '9' : '11.5',
+    'font-weight': '700',
+    'font-family': 'system-ui, sans-serif',
+    'text-anchor': 'middle',
+    'dominant-baseline': 'central',
+  }, label));
+}
+
+function degreeLabel(degree, accidental) {
+  const acc = accidental === 'flat' ? '♭' : accidental === 'sharp' ? '♯' : '';
+  return acc + degree;
+}
+
+function stemDir(note) {
+  if (note.stem === 'up')   return -1;
+  if (note.stem === 'down') return  1;
+  // auto: notes in upper half → stem down, lower half → stem up
+  const eff = note.degree + (note.octaveShift ?? 0) * 7;
+  return eff >= 4.5 ? 1 : -1;
+}
+
+// ── Rest symbols ──────────────────────────────────────────────────────────
+
+function drawRest(svg, x, base) {
+  const midY = (L.UPPER_Y + L.LOWER_Y) / 2;
+  if (base === 'whole') {
+    // Filled rectangle hanging from upper line
+    svg.appendChild(el('rect', {
+      x: x - 10, y: L.UPPER_Y, width: 20, height: 8,
+      fill: 'var(--fg)', rx: 1
+    }));
+  } else if (base === 'minim') {
+    // Open rectangle sitting on lower line
+    svg.appendChild(el('rect', {
+      x: x - 10, y: L.LOWER_Y - 8, width: 20, height: 8,
+      fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.6, rx: 1
+    }));
+  } else if (base === 'crotchet') {
+    // Simple squiggle approximation using a path
+    const top = midY - 12;
+    const d = `M ${x} ${top} l 5 6 l -8 5 l 8 4 l -5 6 l 6 -2`;
+    svg.appendChild(el('path', { d, fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  } else if (base === 'quaver') {
+    // Filled oval + flag-like tail
+    svg.appendChild(el('ellipse', { cx: x, cy: midY, rx: 5, ry: 4, fill: 'var(--fg)', transform: `rotate(-20,${x},${midY})` }));
+    svg.appendChild(el('line', { x1: x+4, y1: midY, x2: x+4, y2: midY - 20, stroke: 'var(--fg)', 'stroke-width': 1.5 }));
+    const d = `M ${x+4} ${midY-20} C ${x+18} ${midY-14} ${x+12} ${midY-6} ${x+4} ${midY-4}`;
+    svg.appendChild(el('path', { d, fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.5 }));
+  } else {
+    // fallback dash
+    svg.appendChild(el('line', { x1: x-8, y1: midY, x2: x+8, y2: midY, stroke: 'var(--fg)', 'stroke-width': 2 }));
+  }
+}
+
+// ── Main render function ──────────────────────────────────────────────────
+
+function renderBar(bar, key, chordFormat) {
+  const ts = bar.timeSignature;
+  const svg = el('svg', { viewBox: `0 0 ${L.W} ${L.H}`, xmlns: NS });
+
+  // ── Reference lines ────────────────────────────────────────────────────
+  const dash = '10 7';
+  svg.appendChild(el('line', { x1: L.LEFT, y1: L.UPPER_Y, x2: L.RIGHT, y2: L.UPPER_Y, stroke: 'var(--staff-line)', 'stroke-width': 1.4, 'stroke-dasharray': dash }));
+  svg.appendChild(el('line', { x1: L.LEFT, y1: L.LOWER_Y, x2: L.RIGHT, y2: L.LOWER_Y, stroke: 'var(--staff-line)', 'stroke-width': 1.4, 'stroke-dasharray': dash }));
+
+  // Reference line labels
+  svg.appendChild(el('text', { x: L.LEFT - 10, y: L.UPPER_Y + 4, fill: 'var(--label)', 'font-size': '10', 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif' }, '8'));
+  svg.appendChild(el('text', { x: L.LEFT - 10, y: L.LOWER_Y + 4, fill: 'var(--label)', 'font-size': '10', 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif' }, '1'));
+
+  // ── Barlines ───────────────────────────────────────────────────────────
+  svg.appendChild(el('line', { x1: L.LEFT,  y1: L.UPPER_Y - 12, x2: L.LEFT,  y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
+  svg.appendChild(el('line', { x1: L.RIGHT, y1: L.UPPER_Y - 12, x2: L.RIGHT, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
+  // Double right barline (end of piece indicator for PoC)
+  svg.appendChild(el('line', { x1: L.RIGHT + 4, y1: L.UPPER_Y - 12, x2: L.RIGHT + 4, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 4 }));
+
+  // ── Time signature ─────────────────────────────────────────────────────
+  const tsStyle = `fill:var(--fg);font-size:22px;font-weight:600;font-family:serif;text-anchor:middle;`;
+  svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.38, style: tsStyle }, String(ts.beats)));
+  svg.appendChild(el('text', { x: L.TS_X, y: L.LOWER_Y - SPAN * 0.04, style: tsStyle }, String(ts.division)));
+
+  // ── Layout notes ───────────────────────────────────────────────────────
+  const laid = layoutNotes(bar.notes, ts);
+
+  // ── Beams (drawn first, behind noteheads) ──────────────────────────────
+  const beamGroups = {};
+  laid.forEach(({ n, x }) => {
+    if (n.beam && n.beam.groupId) {
+      (beamGroups[n.beam.groupId] ??= []).push({ n, x });
+    }
+  });
+
+  for (const members of Object.values(beamGroups)) {
+    if (members.length < 2) continue;
+    const dir = stemDir(members[0].n);
+    const tipY1 = noteY(members[0].n.degree, members[0].n.octaveShift) + dir * (L.NOTE_R * 0.6 + L.STEM_LEN);
+    const tipY2 = noteY(members[members.length-1].n.degree, members[members.length-1].n.octaveShift) + dir * (L.NOTE_R * 0.6 + L.STEM_LEN);
+
+    // Draw stems for each beamed note
+    members.forEach(({ n, x }) => {
+      const ny = noteY(n.degree, n.octaveShift);
+      const tipY = ny + dir * (L.NOTE_R * 0.6 + L.STEM_LEN);
+      svg.appendChild(el('line', {
+        x1: x, y1: ny + dir * L.NOTE_R * 0.6, x2: x, y2: tipY,
+        stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round'
+      }));
+    });
+
+    // Beam bar
+    svg.appendChild(el('line', {
+      x1: members[0].x, y1: tipY1,
+      x2: members[members.length-1].x, y2: tipY2,
+      stroke: 'var(--beam)', 'stroke-width': 5, 'stroke-linecap': 'square'
+    }));
+  }
+
+  // ── Notes and rests ────────────────────────────────────────────────────
+  laid.forEach(({ n, x }) => {
+    if (n.type === 'rest') {
+      drawRest(svg, x, n.duration.base);
+      return;
+    }
+
+    const y   = noteY(n.degree, n.octaveShift);
+    const dir = stemDir(n);
+    const lbl = degreeLabel(n.degree, n.accidental);
+    const base = n.duration.base;
+    const isBeamed = n.beam && n.beam.type !== null;
+
+    // Notehead
+    drawNotehead(svg, x, y, base, lbl);
+
+    // Stem (skip for whole notes and beamed notes — beamed stems drawn above)
+    if (base !== 'whole' && !isBeamed) {
+      const tipY = y + dir * (L.NOTE_R * 0.6 + L.STEM_LEN);
+      drawStem(svg, x, y, dir, L.STEM_LEN);
+      // Flag for unbeamed quaver/semiquaver
+      if (base === 'quaver' || base === 'semiquaver') {
+        drawFlag(svg, x, tipY, dir);
+      }
+    }
+
+    // Augmentation dots
+    if (n.duration.dots > 0) {
+      for (let d = 0; d < n.duration.dots; d++) {
+        svg.appendChild(el('circle', { cx: x + L.NOTE_R + 5 + d * 7, cy: y - 3, r: 2.5, fill: 'var(--fg)' }));
+      }
+    }
+
+    // Ledger-line hint for notes outside the staff (subtle accent line)
+    if (n.octaveShift !== 0) {
+      const refY = n.octaveShift > 0 ? L.UPPER_Y : L.LOWER_Y;
+      svg.appendChild(el('line', {
+        x1: x - 18, y1: refY, x2: x + 18, y2: refY,
+        stroke: 'var(--accent)', 'stroke-width': 1.2,
+        'stroke-dasharray': '4 3', opacity: '0.55'
+      }));
+    }
+  });
+
+  // ── Chord symbol ───────────────────────────────────────────────────────
+  const chord = bar.chordSymbol;
+  const noteW = L.RIGHT - L.NOTE_START;
+  const chordX = L.NOTE_START + (chord.beatOffset / ts.beats) * noteW + 20;
+  const chordText = formatChordSymbol(chord, chordFormat, key);
+
+  svg.appendChild(el('text', {
+    x: chordX, y: L.CHORD_Y,
+    fill: 'var(--chord)',
+    'font-size': '18',
+    'font-style': 'italic',
+    'font-family': 'Georgia, "Times New Roman", serif',
+    'text-anchor': 'middle',
+  }, chordText));
+
+  return svg;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// APP STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+let state = { key: 'G', format: 'nashville', theme: 'light' };
+
+function render() {
+  const wrap = document.getElementById('scoreWrap');
+  wrap.innerHTML = '';
+  DOC.bars.forEach(bar => wrap.appendChild(renderBar(bar, state.key, state.format)));
+  document.getElementById('keyLabel').textContent = `Key of ${state.key} · Bar 1`;
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+document.getElementById('keySelect').addEventListener('change', e => {
+  state.key = e.target.value;
+  render();
+});
+
+document.getElementById('formatSelect').addEventListener('change', e => {
+  state.format = e.target.value;
+  render();
+});
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  state.theme = state.theme === 'light' ? 'dark' : 'light';
+  document.body.dataset.theme = state.theme === 'dark' ? 'dark' : '';
+  document.getElementById('themeBtn').textContent = state.theme === 'dark' ? 'Light' : 'Dark';
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+render();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>

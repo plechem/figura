@@ -16,7 +16,14 @@ A music notation PWA. The core concept is **scale degree notation** - instead of
 
 ## Internal Data Format
 
-The v0.2 JSON schema is in `notation-schema.json` at the repo root. (Schema to be added.)
+The v0.2 JSON schema is in `notation-schema.json` at the repo root. Key points:
+- `document` → `bars[]` → `notes[]` — hierarchical structure
+- `note.degree` is canonical (1–8); never changes on transposition
+- `note.octaveShift` drives vertical position: -1 below staff, 0 within, 1 above
+- `note.midi.pitch` is for reference only — unused in rendering
+- `chordSymbol` is a structured object, never a raw string
+- `chordSymbol.bass.degree` is relative to the chord root, not the home key
+- Beam grouping is explicit per bar via `beamGrouping` and per-note `beam.type`
 
 ## Proof of Concept Renderer - Build First
 
