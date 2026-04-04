@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@800&display=swap" rel="stylesheet">
   <meta name="theme-color" content="#1a1a2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <style>
@@ -576,8 +576,8 @@ function renderBar(bar, key, chordFormat) {
   // ── Time signature ─────────────────────────────────────────────────────
   // Each numeral fills 50% of the staff height; centres sit at ±25% from midpoint.
   // Font-size is scaled so cap height ≈ SPAN/2 (Playfair cap height ≈ 72% of em).
-  const tsFontSize = Math.round(SPAN / 2 / 0.72);
-  const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'Playfair Display',serif;text-anchor:middle;dominant-baseline:central;`;
+  const tsFontSize = Math.round(SPAN / 2 / 0.68);
+  const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'EB Garamond',serif;text-anchor:middle;dominant-baseline:central;`;
   svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.25, style: tsStyle }, String(ts.beats)));
   svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.75, style: tsStyle }, String(ts.division)));
 
