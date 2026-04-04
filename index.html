@@ -249,46 +249,46 @@ const DOC = {
   keyMode: 'major',
   defaultTimeSignature: { beats: 4, division: 4 },
   bars: [
-    // Bar 1: minim 6, minim 3 — chords: 4 on beat 1, 5 on beat 3
+    // Bar 1: minim 6, minim 3 — chord 4
     BAR('bar-001', 0, [
       NOTE('n-101', 6, 'minim', 0, 'down'),
       NOTE('n-102', 3, 'minim', 0, 'up'),
-    ], [CHORD(4, 'major', 0), CHORD(5, 'major', 2)]),
+    ], [CHORD(4, 'major', 0)]),
 
-    // Bar 2: whole 2 — chords: 3m on beat 1, 6m on beat 3
+    // Bar 2: whole 2 — chord 5
     BAR('bar-002', 1, [
       NOTE('n-201', 2, 'whole'),
-    ], [CHORD(3, 'minor', 0), CHORD(6, 'minor', 2)]),
+    ], [CHORD(5, 'major', 0)]),
 
-    // Bar 3: minim 5, minim 2 — chords: 4 on beat 1, 5 on beat 3
+    // Bar 3: minim 5, minim 2 — chord 3m
     BAR('bar-003', 2, [
       NOTE('n-301', 5, 'minim', 0, 'down'),
       NOTE('n-302', 2, 'minim', 0, 'up'),
-    ], [CHORD(4, 'major', 0), CHORD(5, 'major', 2)]),
+    ], [CHORD(3, 'minor', 0)]),
 
-    // Bar 4: whole 1 — chord: 1 on beat 1
+    // Bar 4: whole 1 — chord 6m (wait - degree 6m... actually it's 6m)
     BAR('bar-004', 3, [
       NOTE('n-401', 1, 'whole'),
-    ], [CHORD(1, 'major', 0)]),
+    ], [CHORD(6, 'minor', 0)]),
 
-    // Bar 5: minim 6, minim 3
+    // Bar 5: minim 6, minim 3 — chord 4
     BAR('bar-005', 4, [
       NOTE('n-501', 6, 'minim', 0, 'down'),
       NOTE('n-502', 3, 'minim', 0, 'up'),
-    ]),
+    ], [CHORD(4, 'major', 0)]),
 
-    // Bar 6: dotted crotchet 2 | quaver 1 + quaver 2 (beamed) | dotted crotchet 1 (tie start)
+    // Bar 6: dotted crotchet 2 | quaver 1 + quaver 2 (beamed) | dotted crotchet 1 (tie start) — chord 5
     BAR('bar-006', 5, [
       NOTE('n-601', 2, 'crotchet', 1, 'up'),
       NOTE('n-602', 1, 'quaver',   0, 'up', 'start', 'bg-b6'),
       NOTE('n-603', 2, 'quaver',   0, 'up', 'end',   'bg-b6'),
       NOTE('n-604', 1, 'crotchet', 1, 'up', null, null, 'start', 'tie-x'),
-    ]),
+    ], [CHORD(5, 'major', 0)]),
 
-    // Bar 7: whole 1 (tie end)
+    // Bar 7: whole 1 (tie end) — chord 1
     BAR('bar-007', 6, [
       NOTE('n-701', 1, 'whole', 0, null, null, null, 'end', 'tie-x'),
-    ]),
+    ], [CHORD(1, 'major', 0)]),
   ]
 };
 
