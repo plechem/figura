@@ -612,7 +612,7 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false) {
   // Right barline + double only on final bar
   if (isLast) {
     svg.appendChild(el('line', { x1: L.RIGHT,     y1: L.UPPER_Y - 12, x2: L.RIGHT,     y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
-    svg.appendChild(el('line', { x1: L.RIGHT + 7, y1: L.UPPER_Y - 12, x2: L.RIGHT + 7, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 4.5 }));
+    svg.appendChild(el('line', { x1: L.RIGHT + 9, y1: L.UPPER_Y - 12, x2: L.RIGHT + 9, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 6 }));
   }
 
   // ── Time signature (first bar or time-sig change only) ────────────────
