@@ -153,11 +153,18 @@
       box-shadow: 0 2px 18px var(--shadow);
       border: 1px solid var(--ctrl-border);
       overflow: hidden;
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 0;
+      display: flex;
+      flex-direction: column;
     }
-    .score-wrap svg {
+    .score-row {
+      display: flex;
+      width: 100%;
+    }
+    .score-row > div {
+      flex: 1;
+      min-width: 0;
+    }
+    .score-row svg {
       width: 100%;
       height: auto;
       display: block;
@@ -585,7 +592,7 @@ function drawRest(svg, x, base) {
 
 // ── Main render function ──────────────────────────────────────────────────
 
-function renderBar(bar, key, chordFormat, showTS = false, isLast = false) {
+function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false) {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -609,10 +616,12 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false) {
   // ── Barlines ───────────────────────────────────────────────────────────
   // Left barline on every bar (at SVG left edge → seamless with preceding bar's right edge)
   svg.appendChild(el('line', { x1: L.LEFT, y1: L.UPPER_Y - 12, x2: L.LEFT, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
-  // Right barline + double only on final bar
-  if (isLast) {
+  // Right barline at the end of every system row; double barline on final bar
+  if (isRowEnd) {
     svg.appendChild(el('line', { x1: L.RIGHT,     y1: L.UPPER_Y - 12, x2: L.RIGHT,     y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
-    svg.appendChild(el('line', { x1: L.RIGHT + 9, y1: L.UPPER_Y - 12, x2: L.RIGHT + 9, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 6 }));
+    if (isLast) {
+      svg.appendChild(el('line', { x1: L.RIGHT + 9, y1: L.UPPER_Y - 12, x2: L.RIGHT + 9, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 6 }));
+    }
   }
 
   // ── Time signature (first bar or time-sig change only) ────────────────
@@ -717,17 +726,18 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false) {
     if (n.tie.type === 'start') { sx = x;        ex = L.W - 2; }
     else                        { sx = 2;         ex = x;      }
     const span = ex - sx;
-    // Cubic bezier — control points angled inward so ends are pointed, not flat
-    const ox = span * 0.22;  // horizontal offset of control points from ends
-    const ob = 18;           // outer bulge depth
-    const ib = 2;            // inner bulge depth (near zero = very thin at tips)
+    // Cubic bezier — symmetric lens: both outer and inner edges curve visibly,
+    // tapering to sharp points at each end. Thickness concentrated at centre.
+    const ox = span * 0.28;  // horizontal offset pulls control pts well inward
+    const ob = 11;           // outer bulge depth (downward)
+    const ib = 5;            // inner bulge depth — enough to see curvature at top too
     svg.appendChild(el('path', {
       d: [
         `M ${sx} ${arcY}`,
         `C ${sx+ox} ${arcY+ob} ${ex-ox} ${arcY+ob} ${ex} ${arcY}`,
         `C ${ex-ox} ${arcY+ib} ${sx+ox} ${arcY+ib} ${sx} ${arcY} Z`,
       ].join(' '),
-      fill: 'var(--fg)', opacity: '0.7'
+      fill: 'var(--fg)', opacity: '0.75'
     }));
   });
 
@@ -748,6 +758,52 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// LAYOUT
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Compute how many notes actually occupy horizontal space (notes, not rests,
+// grouped by beam so a pair of beamed quavers counts as ~1.5 note-slots).
+function noteDensity(bar) {
+  let slots = 0;
+  const seen = new Set();
+  bar.notes.forEach(n => {
+    if (n.type === 'rest') return;
+    if (n.beam && n.beam.groupId) {
+      if (!seen.has(n.beam.groupId)) { seen.add(n.beam.groupId); slots += 1.2; }
+      else slots += 0.4;
+    } else {
+      slots += 1;
+    }
+  });
+  return Math.max(1, slots);
+}
+
+// Group bars into system rows such that each bar gets at least MIN_PX_PER_SLOT px
+// per note-slot, while fitting as many bars as possible per row.
+function computeRows(bars, containerWidth) {
+  const MIN_PX_PER_SLOT = 48;
+  const MIN_BAR_WIDTH   = 160;
+
+  const minWidths = bars.map(b =>
+    Math.max(MIN_BAR_WIDTH, noteDensity(b) * MIN_PX_PER_SLOT)
+  );
+
+  const rows = [];
+  let row = [], rowW = 0;
+  for (let i = 0; i < bars.length; i++) {
+    if (row.length > 0 && rowW + minWidths[i] > containerWidth) {
+      rows.push(row);
+      row = [];
+      rowW = 0;
+    }
+    row.push(i);
+    rowW += minWidths[i];
+  }
+  if (row.length) rows.push(row);
+  return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // APP STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -756,14 +812,31 @@ let state = { key: 'G', format: 'nashville', theme: 'light' };
 function render() {
   const wrap = document.getElementById('scoreWrap');
   wrap.innerHTML = '';
-  DOC.bars.forEach((bar, i) => {
-    const prev   = DOC.bars[i - 1];
-    const isLast = i === DOC.bars.length - 1;
-    const showTS = i === 0 || !prev ||
-      bar.timeSignature.beats !== prev.timeSignature.beats ||
-      bar.timeSignature.division !== prev.timeSignature.division;
-    wrap.appendChild(renderBar(bar, state.key, state.format, showTS, isLast));
+
+  const containerWidth = wrap.clientWidth || window.innerWidth || 640;
+  const rows = computeRows(DOC.bars, containerWidth);
+
+  rows.forEach(rowIndices => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'score-row';
+
+    rowIndices.forEach((barIdx, posInRow) => {
+      const bar    = DOC.bars[barIdx];
+      const isLast = barIdx === DOC.bars.length - 1;
+      const isRowEnd = posInRow === rowIndices.length - 1;
+      const prev   = DOC.bars[barIdx - 1];
+      const showTS = barIdx === 0 || !prev ||
+        bar.timeSignature.beats    !== prev.timeSignature.beats ||
+        bar.timeSignature.division !== prev.timeSignature.division;
+
+      const barWrap = document.createElement('div');
+      barWrap.appendChild(renderBar(bar, state.key, state.format, showTS, isLast, isRowEnd));
+      rowEl.appendChild(barWrap);
+    });
+
+    wrap.appendChild(rowEl);
   });
+
   document.getElementById('songTitle').textContent = DOC.title;
   document.getElementById('keyLabel').textContent = `Key of ${state.key}`;
 }
@@ -787,6 +860,13 @@ document.getElementById('themeBtn').addEventListener('click', () => {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 render();
+
+// Re-layout when container width changes (portrait↔landscape, resize, etc.)
+let _resizeTimer;
+new ResizeObserver(() => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(render, 60);
+}).observe(document.getElementById('scoreWrap'));
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
