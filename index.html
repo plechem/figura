@@ -412,7 +412,7 @@ const L = {
 const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
 
 // Notehead geometry — tilted ellipse like standard notation
-const NH = { RX: 13, RY: 9, ANGLE: -30 }; // rotate 30° counter-clockwise (right side up)
+const NH = { RX: 11, RY: 7.5, ANGLE: -30 }; // rotate 30° counter-clockwise (right side up)
 const NH_RAD = NH.ANGLE * Math.PI / 180;
 
 // Returns the true rightmost (side=+1) or leftmost (side=-1) point on the
@@ -605,13 +605,12 @@ function renderBar(bar, key, chordFormat) {
       }));
     });
 
-    // Beam bar connecting tips
+    // Beam bar — drawn as a filled parallelogram so end caps are vertical,
+    // precisely flush with each stem rather than angled perpendicular to the beam slope
     const first = memberData[0], last = memberData[memberData.length - 1];
-    svg.appendChild(el('line', {
-      x1: first.tip.x, y1: first.tip.y,
-      x2: last.tip.x,  y2: last.tip.y,
-      stroke: 'var(--beam)', 'stroke-width': 5, 'stroke-linecap': 'square'
-    }));
+    const bh = 4.5; // half-thickness of beam
+    const bd = `M ${first.tip.x} ${first.tip.y - bh} L ${last.tip.x} ${last.tip.y - bh} L ${last.tip.x} ${last.tip.y + bh} L ${first.tip.x} ${first.tip.y + bh} Z`;
+    svg.appendChild(el('path', { d: bd, fill: 'var(--beam)' }));
   }
 
   // ── Notes and rests ────────────────────────────────────────────────────
