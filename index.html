@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Figura</title>
   <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
   <meta name="theme-color" content="#1a1a2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <style>
@@ -571,7 +574,7 @@ function renderBar(bar, key, chordFormat) {
   svg.appendChild(el('line', { x1: L.RIGHT + 4, y1: L.UPPER_Y - 12, x2: L.RIGHT + 4, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 4 }));
 
   // ── Time signature ─────────────────────────────────────────────────────
-  const tsStyle = `fill:var(--fg);font-size:22px;font-weight:600;font-family:serif;text-anchor:middle;`;
+  const tsStyle = `fill:var(--fg);font-size:24px;font-weight:700;font-family:'Playfair Display',serif;text-anchor:middle;`;
   svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.38, style: tsStyle }, String(ts.beats)));
   svg.appendChild(el('text', { x: L.TS_X, y: L.LOWER_Y - SPAN * 0.04, style: tsStyle }, String(ts.division)));
 
