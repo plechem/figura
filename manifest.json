@@ -1,0 +1,18 @@
+{
+  "name": "Figura",
+  "short_name": "Figura",
+  "description": "Scale degree notation for musicians",
+  "start_url": "/figura/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#1a1a2e",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

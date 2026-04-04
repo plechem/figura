@@ -1,0 +1,243 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Scale Degree Notation Format v0.2 - Internal data format for the notation app",
+
+  "document": {
+    "id": "uuid-v4",
+    "title": "Christ Be Magnified",
+    "created": "2026-04-04T10:00:00Z",
+    "modified": "2026-04-04T10:00:00Z",
+    "key": "G",
+    "keyMode": "major",
+    "defaultTimeSignature": { "beats": 4, "division": 4 },
+    "defaultTempo": 72,
+    "bars": []
+  },
+
+  "bar": {
+    "id": "uuid-v4",
+    "index": 0,
+    "timeSignature": { "beats": 4, "division": 4 },
+    "beamGrouping": [2, 2],
+    "$comment_beamGrouping": "Array of quaver groups within a beat. [2,2] = two groups of 2 quavers. [3] = triplet feel. [2,2,2,2] = straight 4/4 semiquaver grouping. Override per bar.",
+    "chordSymbol": {
+      "degree": 1,
+      "$comment_degree": "Scale degree of the chord root relative to the document key. Integer. Use accidental field for b3, #4 etc.",
+      "accidental": null,
+      "$comment_accidental": "null | 'flat' | 'sharp' — modifies the chord root degree. e.g. degree 3 + accidental 'flat' = bIII / b3 / Bb in G",
+      "quality": "major",
+      "$comment_quality": "major | minor | diminished | augmented | dominant | halfDiminished | sus2 | sus4",
+      "extensions": [],
+      "$comment_extensions": "Array of strings: '7' | 'maj7' | '9' | 'add9' | '11' | '13' etc. Renderer concatenates in active display format.",
+      "bass": null,
+      "$comment_bass": "null | { degree: int, accidental: null|'flat'|'sharp' } — bass note expressed as degree relative to the CHORD, not the home key. e.g. first inversion = bass degree 3 of the chord. See design notes.",
+      "position": "below",
+      "$comment_position": "above | below — position relative to the staff",
+      "beatOffset": 0,
+      "$comment_beatOffset": "Beat position within the bar where this chord symbol appears. Zero-indexed."
+    },
+    "notes": [],
+    "displayOptions": {
+      "showReferenceLines": true,
+      "referenceLineStyle": "dashed",
+      "size": 1.0
+    }
+  },
+
+  "note": {
+    "id": "uuid-v4",
+    "type": "note",
+
+    "degree": 5,
+    "$comment_degree": "Integer scale degree 1-8 (or 9,11,13 if compound intervals enabled). Null if rest.",
+
+    "accidental": null,
+    "$comment_accidental": "null | 'flat' | 'sharp' | 'natural'. Displayed as prefix: b3, #4 etc.",
+
+    "octaveShift": 0,
+    "$comment_octaveShift": "-1 = below reference line, 0 = within staff, 1 = above octave line. Drives vertical position in renderer.",
+
+    "duration": {
+      "base": "quaver",
+      "$comment_base": "whole | minim | crotchet | quaver | semiquaver | demisemiquaver",
+      "dots": 0,
+      "$comment_dots": "0 | 1 | 2 (single or double dot)",
+      "tuplet": null,
+      "$comment_tuplet": "null | { actual: 3, normal: 2, group: 'uuid' } — group ties all notes in same tuplet together"
+    },
+
+    "tie": {
+      "type": null,
+      "$comment_type": "null | 'start' | 'end' | 'middle' — allows ties within and across bars",
+      "groupId": null,
+      "$comment_groupId": "Shared uuid across all notes in a tie chain, including cross-bar ties"
+    },
+
+    "beam": {
+      "type": null,
+      "$comment_type": "null | 'start' | 'continue' | 'end' — renderer uses this to draw beams between quavers and shorter values",
+      "groupId": null
+    },
+
+    "stem": "auto",
+    "$comment_stem": "auto | up | down — auto follows conventional rules based on pitch position",
+
+    "midi": {
+      "pitch": 67,
+      "$comment_pitch": "MIDI note number - stored at input time for reference, not used in transposition (degree is canonical)"
+    }
+  },
+
+  "rest": {
+    "id": "uuid-v4",
+    "type": "rest",
+    "degree": null,
+    "accidental": null,
+    "octaveShift": null,
+    "duration": {
+      "base": "crotchet",
+      "dots": 0,
+      "tuplet": null
+    },
+    "tie": { "type": null, "groupId": null },
+    "beam": { "type": null, "groupId": null },
+    "stem": null,
+    "midi": null
+  },
+
+  "$examples": {
+
+    "example_christ_be_magnified_bar1": {
+      "id": "bar-001",
+      "index": 0,
+      "timeSignature": { "beats": 4, "division": 4 },
+      "beamGrouping": [2, 2],
+      "chordSymbol": {
+        "degree": 1, "accidental": null, "quality": "major", "extensions": [],
+        "bass": null, "position": "below", "beatOffset": 0
+      },
+      "notes": [
+        {
+          "id": "n-001", "type": "note",
+          "degree": 3, "accidental": null, "octaveShift": 0,
+          "duration": { "base": "quaver", "dots": 0, "tuplet": null },
+          "tie": { "type": null, "groupId": null },
+          "beam": { "type": "start", "groupId": "bg-001" },
+          "stem": "up", "midi": { "pitch": 59 }
+        },
+        {
+          "id": "n-002", "type": "note",
+          "degree": 5, "accidental": null, "octaveShift": 0,
+          "duration": { "base": "quaver", "dots": 0, "tuplet": null },
+          "tie": { "type": null, "groupId": null },
+          "beam": { "type": "end", "groupId": "bg-001" },
+          "stem": "up", "midi": { "pitch": 62 }
+        },
+        {
+          "id": "n-003", "type": "note",
+          "degree": 1, "accidental": null, "octaveShift": 1,
+          "duration": { "base": "crotchet", "dots": 0, "tuplet": null },
+          "tie": { "type": null, "groupId": null },
+          "beam": { "type": null, "groupId": null },
+          "stem": "up", "midi": { "pitch": 67 }
+        }
+      ]
+    },
+
+    "example_cross_bar_tie": {
+      "$comment": "Last note of bar 3 ties into first note of bar 4",
+      "bar3_last_note": {
+        "id": "n-099", "type": "note",
+        "degree": 1, "accidental": null, "octaveShift": 0,
+        "duration": { "base": "minim", "dots": 0, "tuplet": null },
+        "tie": { "type": "start", "groupId": "tie-cross-001" },
+        "beam": { "type": null, "groupId": null },
+        "stem": "up", "midi": { "pitch": 55 }
+      },
+      "bar4_first_note": {
+        "id": "n-100", "type": "note",
+        "degree": 1, "accidental": null, "octaveShift": 0,
+        "duration": { "base": "crotchet", "dots": 0, "tuplet": null },
+        "tie": { "type": "end", "groupId": "tie-cross-001" },
+        "beam": { "type": null, "groupId": null },
+        "stem": "up", "midi": { "pitch": 55 }
+      }
+    },
+
+    "example_triplet": {
+      "$comment": "Three quavers in the time of two - triplet group",
+      "notes": [
+        {
+          "id": "n-201", "type": "note",
+          "degree": 1, "accidental": null, "octaveShift": 0,
+          "duration": { "base": "quaver", "dots": 0, "tuplet": { "actual": 3, "normal": 2, "groupId": "tup-001" } },
+          "beam": { "type": "start", "groupId": "bg-201" },
+          "tie": { "type": null, "groupId": null }, "stem": "up", "midi": { "pitch": 55 }
+        },
+        {
+          "id": "n-202", "type": "note",
+          "degree": 2, "accidental": null, "octaveShift": 0,
+          "duration": { "base": "quaver", "dots": 0, "tuplet": { "actual": 3, "normal": 2, "groupId": "tup-001" } },
+          "beam": { "type": "continue", "groupId": "bg-201" },
+          "tie": { "type": null, "groupId": null }, "stem": "up", "midi": { "pitch": 57 }
+        },
+        {
+          "id": "n-203", "type": "note",
+          "degree": 3, "accidental": null, "octaveShift": 0,
+          "duration": { "base": "quaver", "dots": 0, "tuplet": { "actual": 3, "normal": 2, "groupId": "tup-001" } },
+          "beam": { "type": "end", "groupId": "bg-201" },
+          "tie": { "type": null, "groupId": null }, "stem": "up", "midi": { "pitch": 59 }
+        }
+      ]
+    },
+
+    "example_slash_chord_first_inversion": {
+      "$comment": "D/F# in G major — chord V, bass is 3rd degree of the chord (F# is the 3rd of D). Bass stored relative to chord, not home key.",
+      "chordSymbol": {
+        "degree": 5, "accidental": null, "quality": "major", "extensions": [],
+        "bass": { "degree": 3, "accidental": null },
+        "position": "below", "beatOffset": 0
+      }
+    },
+
+    "example_slash_chord_borrowed": {
+      "$comment": "Bb/F in G major — chord bIII, bass is 5th degree of Bb (F). F is NOT stored as b7 of G — it is stored as degree 5 of the chord. This is intentional: the bass derives from the chord's own scale, not the home key.",
+      "chordSymbol": {
+        "degree": 3, "accidental": "flat", "quality": "major", "extensions": [],
+        "bass": { "degree": 5, "accidental": null },
+        "position": "below", "beatOffset": 0
+      }
+    },
+
+    "example_minor_seventh": {
+      "$comment": "VIm7 — minor chord on degree 6 with minor 7th extension",
+      "chordSymbol": {
+        "degree": 6, "accidental": null, "quality": "minor", "extensions": ["7"],
+        "bass": null, "position": "below", "beatOffset": 0
+      }
+    },
+
+    "example_double_dotted": {
+      "$comment": "Double dotted crotchet = 1 + 1/2 + 1/4 beats",
+      "note": {
+        "id": "n-301", "type": "note",
+        "degree": 5, "accidental": null, "octaveShift": 0,
+        "duration": { "base": "crotchet", "dots": 2, "tuplet": null },
+        "tie": { "type": null, "groupId": null },
+        "beam": { "type": null, "groupId": null },
+        "stem": "up", "midi": { "pitch": 62 }
+      }
+    }
+  },
+
+  "$design_notes": {
+    "transposition": "Degree is always canonical. MIDI pitch is stored for reference only. To transpose, change document.key and re-render - no note data changes.",
+    "compoundIntervals": "Document-level setting. When true, degrees 9/11/13 are valid. When false, display wraps to 2/4/6 with octaveShift flag.",
+    "chordStacking": "Multiple notes sharing the same beatOffset within a bar create a chord stack. Renderer draws them vertically aligned.",
+    "beamGrouping": "Per-bar override of default grouping. Renderer uses this to decide where to start/end beams rather than relying purely on note-level beam flags.",
+    "validation": "A bar's notes must sum to exactly the number of beats × division units defined in its timeSignature. Validation layer runs before render.",
+    "chordSymbolModel": "Chord symbols are fully structured - never raw strings. Display format (Nashville / Roman numeral / Arabic / named note) is a render-time decision based on document display settings. The data never changes on format switch.",
+    "bassNoteConvention": "Bass notes in slash chords are stored as a degree relative to the CHORD ROOT, not the home key. This is a deliberate design choice: a bass note almost always derives from the chord's own scale rather than functioning as a scale degree of the home key. Example: Bb/F in G - the F is the 5th of Bb, stored as chord-bass degree 5. It is not stored as b7 of G. This keeps slash chords musically coherent and transposes correctly without ambiguity.",
+    "chordDisplayFormats": "Renderer must support: Nashville (1, 4, 5, b3 etc.), Roman numeral (I, IV, V, bIII etc.), Arabic with quality suffix (1maj, 4maj, 6min etc.), and named note (C, F, G, Bb etc. derived from document key at render time)."
+  }
+}
