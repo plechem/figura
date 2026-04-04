@@ -293,10 +293,15 @@ const DOC = {
       NOTE('n-604', 1, 'crotchet', 1, 'up', null, null, 'start', 'tie-x'),
     ], [CHORD(5, 'major', 0)]),
 
-    // Bar 7: whole 1 (tie end) — chord 1
+    // Bar 7: whole 1 (tie continue — end of bar 6 tie, start of bar 8 tie) — chord 1
     BAR('bar-007', 6, [
-      NOTE('n-701', 1, 'whole', 0, null, null, null, 'end', 'tie-x'),
+      NOTE('n-701', 1, 'whole', 0, null, null, null, 'continue', 'tie-x'),
     ], [CHORD(1, 'major', 0)]),
+
+    // Bar 8: whole 1 (tie end — tied from bar 7)
+    BAR('bar-008', 7, [
+      NOTE('n-801', 1, 'whole', 0, null, null, null, 'end', 'tie-x'),
+    ], []),
   ]
 };
 
@@ -606,7 +611,7 @@ function drawTieArc(svg, sx, ex, arcY) {
 
 // ── Main render function ──────────────────────────────────────────────────
 
-function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false, suppressTieGroups = new Set()) {
+function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false, suppressTieStarts = new Set(), suppressTieEnds = new Set()) {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -731,17 +736,23 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   });
 
   // ── Tie arcs ───────────────────────────────────────────────────────────
-  // Half-arcs for ties that cross a system break; same-row spanning arcs are
-  // drawn as an overlay on the row element (see render()) and suppressed here.
+  // 'start'    → arc from note to SVG right edge
+  // 'end'      → arc from SVG left edge to note
+  // 'continue' → both (mid-chain: ties in from prev bar AND out to next bar)
+  // Same-row spanning arcs are drawn on a row overlay; the relevant half-arcs
+  // are suppressed here via suppressTieStarts / suppressTieEnds.
   laid.forEach(({ n, x }) => {
     if (n.type === 'rest' || !n.tie || !n.tie.type) return;
-    if (suppressTieGroups.has(n.tie.groupId)) return;
+    const tt   = n.tie.type;
+    const gid  = n.tie.groupId;
     const y    = noteY(n.degree, n.octaveShift ?? 0);
     const arcY = y + NH.RY + 5;
-    let sx, ex;
-    if (n.tie.type === 'start') { sx = x;  ex = L.W - 2; }
-    else                        { sx = 2;  ex = x;       }
-    drawTieArc(svg, sx, ex, arcY);
+    if ((tt === 'start' || tt === 'continue') && !suppressTieStarts.has(gid)) {
+      drawTieArc(svg, x, L.W - 2, arcY);
+    }
+    if ((tt === 'end' || tt === 'continue') && !suppressTieEnds.has(gid)) {
+      drawTieArc(svg, 2, x, arcY);
+    }
   });
 
   // ── Chord symbols ──────────────────────────────────────────────────────
@@ -845,9 +856,14 @@ function render() {
     });
 
     // Detect ties between adjacent bars within this row.
-    // These become a single spanning arc on an overlay SVG instead of two half-arcs.
-    const suppressTieGroups = new Set();
-    const spanningTies = [];
+    // These become spanning arcs on an overlay SVG. We track suppression per-bar
+    // and per-direction so 'continue' notes can suppress one direction while still
+    // drawing their system-break half-arc in the other.
+    // suppressStarts[barIdx]: groupIds whose start-arc is handled by a spanning arc
+    // suppressEnds[barIdx]:   groupIds whose end-arc is handled by a spanning arc
+    const suppressStarts = {};
+    const suppressEnds   = {};
+    const spanningTies   = [];
 
     for (let p = 0; p < rowIndices.length - 1; p++) {
       const barA  = DOC.bars[rowIndices[p]];
@@ -856,14 +872,17 @@ function render() {
       const laidB = barNotePositions(barB, showTSArr[p + 1]);
 
       laidA.forEach(({ n, x: sx }) => {
-        if (n.tie?.type !== 'start') return;
+        const tt = n.tie?.type;
+        if (tt !== 'start' && tt !== 'continue') return;
         const found = laidB.find(({ n: m }) =>
-          m.tie?.type === 'end' && m.tie?.groupId === n.tie.groupId
+          (m.tie?.type === 'end' || m.tie?.type === 'continue') &&
+          m.tie?.groupId === n.tie.groupId
         );
         if (!found) return;
-        suppressTieGroups.add(n.tie.groupId);
+        const gid = n.tie.groupId;
+        (suppressStarts[rowIndices[p]]     ??= new Set()).add(gid);
+        (suppressEnds[rowIndices[p + 1]]   ??= new Set()).add(gid);
         const arcY = noteY(n.degree, n.octaveShift ?? 0) + NH.RY + 5;
-        // x coords in the overlay's extended coordinate space (p bars × L.W per bar)
         spanningTies.push({ sx: p * L.W + sx, ex: (p + 1) * L.W + found.x, arcY });
       });
     }
@@ -882,18 +901,27 @@ function render() {
         ? 'flex:1; min-width:0;'
         : `flex:0 0 ${targetBarWidth}px; width:${targetBarWidth}px;`;
       barWrap.appendChild(
-        renderBar(bar, state.key, state.format, showTSArr[posInRow], isLast, isRowEnd, suppressTieGroups)
+        renderBar(bar, state.key, state.format, showTSArr[posInRow], isLast, isRowEnd,
+          suppressStarts[barIdx] ?? new Set(),
+          suppressEnds[barIdx]   ?? new Set())
       );
       rowEl.appendChild(barWrap);
     });
 
-    // Overlay SVG for spanning tie arcs (same-row cross-barline ties)
+    // Overlay SVG for spanning tie arcs (same-row cross-barline ties).
+    // The overlay must cover exactly the area occupied by the bars:
+    //   • stretch rows  → bars fill 100% of the row
+    //   • non-stretch   → bars fill barsInRow/maxBarsInRow of the row (rest is whitespace)
+    // viewBox maps L.W units to each bar, so p*L.W gives the correct x for bar at position p.
     if (spanningTies.length) {
       const barsInRow = rowIndices.length;
+      const overlayWidthPct = stretch
+        ? '100%'
+        : `${(barsInRow / maxBarsInRow * 100).toFixed(4)}%`;
       const overlay = el('svg', {
         viewBox: `0 0 ${barsInRow * L.W} ${L.H}`,
         xmlns: NS,
-        style: `position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;`,
+        style: `position:absolute;top:0;left:0;width:${overlayWidthPct};pointer-events:none;`,
       });
       spanningTies.forEach(({ sx, ex, arcY }) => drawTieArc(overlay, sx, ex, arcY));
       rowEl.appendChild(overlay);
