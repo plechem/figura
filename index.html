@@ -574,9 +574,12 @@ function renderBar(bar, key, chordFormat) {
   svg.appendChild(el('line', { x1: L.RIGHT + 4, y1: L.UPPER_Y - 12, x2: L.RIGHT + 4, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 4 }));
 
   // ── Time signature ─────────────────────────────────────────────────────
-  const tsStyle = `fill:var(--fg);font-size:24px;font-weight:700;font-family:'Playfair Display',serif;text-anchor:middle;`;
-  svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.38, style: tsStyle }, String(ts.beats)));
-  svg.appendChild(el('text', { x: L.TS_X, y: L.LOWER_Y - SPAN * 0.04, style: tsStyle }, String(ts.division)));
+  // Each numeral fills 50% of the staff height; centres sit at ±25% from midpoint.
+  // Font-size is scaled so cap height ≈ SPAN/2 (Playfair cap height ≈ 72% of em).
+  const tsFontSize = Math.round(SPAN / 2 / 0.72);
+  const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'Playfair Display',serif;text-anchor:middle;dominant-baseline:central;`;
+  svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.25, style: tsStyle }, String(ts.beats)));
+  svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.75, style: tsStyle }, String(ts.division)));
 
   // ── Layout notes ───────────────────────────────────────────────────────
   const laid = layoutNotes(bar.notes, ts);
