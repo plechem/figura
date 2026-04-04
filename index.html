@@ -412,7 +412,7 @@ const L = {
 const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
 
 // Notehead geometry — tilted ellipse like standard notation
-const NH = { RX: 13, RY: 7, ANGLE: 30 }; // rotate 30° clockwise (right side down)
+const NH = { RX: 13, RY: 7, ANGLE: -30 }; // rotate 30° counter-clockwise (right side up)
 const NH_RAD = NH.ANGLE * Math.PI / 180;
 
 // Returns the point where a stem attaches to the notehead
