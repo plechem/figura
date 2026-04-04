@@ -428,6 +428,7 @@ const L = {
   NOTE_R:      12,   // notehead circle radius
   TS_X:        68,   // x centre for time signature numerals
   NOTE_START:  92,   // x where notes begin (after time sig)
+  NOTE_START_NO_TS: 62, // x where notes begin when no time sig shown
 };
 
 const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
@@ -468,13 +469,16 @@ const BEAT_VAL = {
   whole: 4, minim: 2, crotchet: 1, quaver: 0.5, semiquaver: 0.25, demisemiquaver: 0.125
 };
 
-// Assign beat-proportional x positions to all notes in a bar
-function layoutNotes(notes, ts) {
-  const noteW = L.RIGHT - L.NOTE_START;
+// Assign beat-proportional x positions to all notes in a bar.
+// Whole notes align at beat start (+ 0.5 beat padding) so they line up with chord symbols.
+// All other notes are centred within their duration as before.
+function layoutNotes(notes, ts, noteStart) {
+  const noteW = L.RIGHT - noteStart;
   let beat = 0;
   return notes.map(n => {
     const dur = BEAT_VAL[n.duration.base] * (n.duration.dots === 1 ? 1.5 : n.duration.dots === 2 ? 1.75 : 1);
-    const x = L.NOTE_START + ((beat + dur / 2) / ts.beats) * noteW;
+    const centering = (n.duration.base === 'whole') ? 0.5 : dur / 2;
+    const x = noteStart + ((beat + centering) / ts.beats) * noteW;
     beat += dur;
     return { n, x, dur };
   });
@@ -570,8 +574,10 @@ function drawRest(svg, x, base) {
 
 // ── Main render function ──────────────────────────────────────────────────
 
-function renderBar(bar, key, chordFormat) {
+function renderBar(bar, key, chordFormat, showTS = false) {
   const ts = bar.timeSignature;
+  const noteStart = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
+  const noteW = L.RIGHT - noteStart;
   const svg = el('svg', { viewBox: `0 0 ${L.W} ${L.H}`, xmlns: NS });
 
   // ── Reference lines ────────────────────────────────────────────────────
@@ -589,16 +595,16 @@ function renderBar(bar, key, chordFormat) {
   // Double right barline (end of piece indicator for PoC)
   svg.appendChild(el('line', { x1: L.RIGHT + 4, y1: L.UPPER_Y - 12, x2: L.RIGHT + 4, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 4 }));
 
-  // ── Time signature ─────────────────────────────────────────────────────
-  // Each numeral fills 50% of the staff height; centres sit at ±25% from midpoint.
-  // Font-size is scaled so cap height ≈ SPAN/2 (Playfair cap height ≈ 72% of em).
-  const tsFontSize = Math.round(SPAN / 2 / 0.68);
-  const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'EB Garamond',serif;text-anchor:middle;dominant-baseline:central;`;
-  svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.25, style: tsStyle }, String(ts.beats)));
-  svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.75, style: tsStyle }, String(ts.division)));
+  // ── Time signature (first bar or time-sig change only) ────────────────
+  if (showTS) {
+    const tsFontSize = Math.round(SPAN / 2 / 0.68);
+    const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'EB Garamond',serif;text-anchor:middle;dominant-baseline:central;`;
+    svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.25, style: tsStyle }, String(ts.beats)));
+    svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.75, style: tsStyle }, String(ts.division)));
+  }
 
   // ── Layout notes ───────────────────────────────────────────────────────
-  const laid = layoutNotes(bar.notes, ts);
+  const laid = layoutNotes(bar.notes, ts, noteStart);
 
   // ── Beams (drawn first, behind noteheads) ──────────────────────────────
   const beamGroups = {};
@@ -682,33 +688,28 @@ function renderBar(bar, key, chordFormat) {
   });
 
   // ── Tie arcs ───────────────────────────────────────────────────────────
-  // Cross-bar ties: start note draws arc to right barline; end note draws arc from left barline
+  // Drawn as a filled lens (two quadratic beziers) — thick in the middle, tapering to points.
   laid.forEach(({ n, x }) => {
     if (n.type === 'rest' || !n.tie || !n.tie.type) return;
-    const y   = noteY(n.degree, n.octaveShift ?? 0);
-    const arcY = y + NH.RY + 5;   // arc sits just below the notehead
-    const bulge = arcY + 10;       // control point dips down
-    if (n.tie.type === 'start') {
-      const ex = L.RIGHT;
-      svg.appendChild(el('path', {
-        d: `M ${x} ${arcY} Q ${(x + ex) / 2} ${bulge} ${ex} ${arcY}`,
-        fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.4, opacity: '0.7'
-      }));
-    }
-    if (n.tie.type === 'end') {
-      const sx = L.LEFT;
-      svg.appendChild(el('path', {
-        d: `M ${sx} ${arcY} Q ${(sx + x) / 2} ${bulge} ${x} ${arcY}`,
-        fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.4, opacity: '0.7'
-      }));
-    }
+    const y    = noteY(n.degree, n.octaveShift ?? 0);
+    const arcY = y + NH.RY + 5;
+    let sx, ex;
+    if (n.tie.type === 'start') { sx = x;       ex = L.RIGHT; }
+    else                        { sx = L.LEFT;  ex = x;       }
+    const mx   = (sx + ex) / 2;
+    const outerCtrl = arcY + 11;  // outer curve — defines the arc
+    const innerCtrl = arcY + 4;   // inner curve — close to baseline, creates taper
+    svg.appendChild(el('path', {
+      d: `M ${sx} ${arcY} Q ${mx} ${outerCtrl} ${ex} ${arcY} Q ${mx} ${innerCtrl} ${sx} ${arcY} Z`,
+      fill: 'var(--fg)', opacity: '0.65'
+    }));
   });
 
   // ── Chord symbols ──────────────────────────────────────────────────────
   const chordFont = chordFormat === 'roman' ? "'EB Garamond', serif" : "system-ui, sans-serif";
   (bar.chordSymbols || []).forEach(chord => {
-    const noteW = L.RIGHT - L.NOTE_START;
-    const chordX = L.NOTE_START + (chord.beatOffset / ts.beats) * noteW + 20;
+    // Use same formula as whole-note positioning: beatOffset + 0.5 half-beat padding
+    const chordX = noteStart + ((chord.beatOffset + 0.5) / ts.beats) * noteW;
     svg.appendChild(el('text', {
       x: chordX, y: L.CHORD_Y,
       fill: 'var(--chord)',
@@ -729,7 +730,13 @@ let state = { key: 'G', format: 'nashville', theme: 'light' };
 function render() {
   const wrap = document.getElementById('scoreWrap');
   wrap.innerHTML = '';
-  DOC.bars.forEach(bar => wrap.appendChild(renderBar(bar, state.key, state.format)));
+  DOC.bars.forEach((bar, i) => {
+    const prev = DOC.bars[i - 1];
+    const showTS = i === 0 || !prev ||
+      bar.timeSignature.beats !== prev.timeSignature.beats ||
+      bar.timeSignature.division !== prev.timeSignature.division;
+    wrap.appendChild(renderBar(bar, state.key, state.format, showTS));
+  });
   document.getElementById('songTitle').textContent = DOC.title;
   document.getElementById('keyLabel').textContent = `Key of ${state.key}`;
 }
