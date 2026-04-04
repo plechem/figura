@@ -155,6 +155,7 @@
       overflow: hidden;
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0;
     }
     .score-wrap svg {
       width: 100%;
@@ -494,11 +495,22 @@ function drawStem(svg, ax, ay, tipX, tipY) {
 }
 
 function drawFlag(svg, tipX, tipY, dir) {
-  // Flag always curves to the right of the stem tip
-  const d = dir === -1
-    ? `M ${tipX} ${tipY} C ${tipX+14} ${tipY+8} ${tipX+16} ${tipY+20} ${tipX+6} ${tipY+28}`
-    : `M ${tipX} ${tipY} C ${tipX+14} ${tipY-8} ${tipX+16} ${tipY-20} ${tipX+6} ${tipY-28}`;
-  svg.appendChild(el('path', { d, fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round' }));
+  // Filled tapered flag:
+  //   • Vertical left edge at tipX — joins the stem flush
+  //   • Thick (T px) at the stem-tip end, tapering to a point at the free curl
+  //   • Outer bezier arcs away; inner bezier returns close to the stem
+  const W = 15, H = 30, T = 7;
+  const s = dir === -1 ? 1 : -1;  // s=1 → flag hangs down (up-stem); s=-1 → flag rises (down-stem)
+  const d = [
+    `M ${tipX} ${tipY}`,
+    // Outer curve: broad arc from attachment to free tip
+    `C ${tipX+W} ${tipY+s*H*0.2} ${tipX+W} ${tipY+s*H*0.78} ${tipX+4} ${tipY+s*H}`,
+    // Inner curve: returns from free tip to inner attachment point
+    `C ${tipX+W*0.65} ${tipY+s*H*0.65} ${tipX+W*0.65} ${tipY+s*T*1.3} ${tipX} ${tipY+s*T}`,
+    // Vertical left edge back to start
+    `L ${tipX} ${tipY} Z`,
+  ].join(' ');
+  svg.appendChild(el('path', { d, fill: 'var(--fg)' }));
 }
 
 function drawNotehead(svg, x, y, duration, label) {
@@ -574,7 +586,7 @@ function drawRest(svg, x, base) {
 
 // ── Main render function ──────────────────────────────────────────────────
 
-function renderBar(bar, key, chordFormat, showTS = false) {
+function renderBar(bar, key, chordFormat, showTS = false, isLast = false) {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -596,8 +608,10 @@ function renderBar(bar, key, chordFormat, showTS = false) {
   // ── Barlines ───────────────────────────────────────────────────────────
   svg.appendChild(el('line', { x1: L.LEFT,  y1: L.UPPER_Y - 12, x2: L.LEFT,  y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
   svg.appendChild(el('line', { x1: L.RIGHT, y1: L.UPPER_Y - 12, x2: L.RIGHT, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
-  // Double right barline (end of piece indicator for PoC)
-  svg.appendChild(el('line', { x1: L.RIGHT + 4, y1: L.UPPER_Y - 12, x2: L.RIGHT + 4, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 4 }));
+  // Double barline only on final bar
+  if (isLast) {
+    svg.appendChild(el('line', { x1: L.RIGHT + 5, y1: L.UPPER_Y - 12, x2: L.RIGHT + 5, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 4 }));
+  }
 
   // ── Time signature (first bar or time-sig change only) ────────────────
   if (showTS) {
@@ -735,11 +749,12 @@ function render() {
   const wrap = document.getElementById('scoreWrap');
   wrap.innerHTML = '';
   DOC.bars.forEach((bar, i) => {
-    const prev = DOC.bars[i - 1];
+    const prev   = DOC.bars[i - 1];
+    const isLast = i === DOC.bars.length - 1;
     const showTS = i === 0 || !prev ||
       bar.timeSignature.beats !== prev.timeSignature.beats ||
       bar.timeSignature.division !== prev.timeSignature.division;
-    wrap.appendChild(renderBar(bar, state.key, state.format, showTS));
+    wrap.appendChild(renderBar(bar, state.key, state.format, showTS, isLast));
   });
   document.getElementById('songTitle').textContent = DOC.title;
   document.getElementById('keyLabel').textContent = `Key of ${state.key}`;
