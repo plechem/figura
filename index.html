@@ -147,13 +147,14 @@
 
     .score-wrap {
       width: 100%;
-      max-width: 680px;
+      max-width: 1200px;
       background: var(--bg);
       border-radius: 10px;
       box-shadow: 0 2px 18px var(--shadow);
-      padding: 0.5rem 0 0.75rem;
       border: 1px solid var(--ctrl-border);
       overflow: hidden;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     }
     .score-wrap svg {
       width: 100%;
@@ -280,8 +281,8 @@ const DOC = {
     // Bar 6: dotted crotchet 2 | quaver 1 + quaver 2 (beamed) | dotted crotchet 1 (tie start) — chord 5
     BAR('bar-006', 5, [
       NOTE('n-601', 2, 'crotchet', 1, 'up'),
-      NOTE('n-602', 1, 'quaver',   0, 'up', 'start', 'bg-b6'),
-      NOTE('n-603', 2, 'quaver',   0, 'up', 'end',   'bg-b6'),
+      NOTE('n-602', 1, 'quaver',   0, 'up'),
+      NOTE('n-603', 2, 'quaver',   0, 'up'),
       NOTE('n-604', 1, 'crotchet', 1, 'up', null, null, 'start', 'tie-x'),
     ], [CHORD(5, 'major', 0)]),
 
