@@ -671,12 +671,17 @@ function renderBar(bar, key, chordFormat) {
   const chordX = L.NOTE_START + (chord.beatOffset / ts.beats) * noteW + 20;
   const chordText = formatChordSymbol(chord, chordFormat, key);
 
+  const chordFont = chordFormat === 'roman'
+    ? "'EB Garamond', serif"
+    : "system-ui, sans-serif";
+
   svg.appendChild(el('text', {
     x: chordX, y: L.CHORD_Y,
     fill: 'var(--chord)',
     'font-size': '18',
-    'font-style': 'italic',
-    'font-family': 'Georgia, "Times New Roman", serif',
+    'font-weight': '700',
+    'font-style': 'normal',
+    'font-family': chordFont,
     'text-anchor': 'middle',
   }, chordText));
 
