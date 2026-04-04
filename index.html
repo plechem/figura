@@ -608,8 +608,9 @@ function renderBar(bar, key, chordFormat) {
     // Beam bar — drawn as a filled parallelogram so end caps are vertical,
     // precisely flush with each stem rather than angled perpendicular to the beam slope
     const first = memberData[0], last = memberData[memberData.length - 1];
-    const bh = 4.5; // half-thickness of beam
-    const bd = `M ${first.tip.x} ${first.tip.y - bh} L ${last.tip.x} ${last.tip.y - bh} L ${last.tip.x} ${last.tip.y + bh} L ${first.tip.x} ${first.tip.y + bh} Z`;
+    const bh = 4.5;  // half-thickness of beam
+    const sw = 0.8;  // half of stem stroke-width — beam overlaps stem outer edges
+    const bd = `M ${first.tip.x - sw} ${first.tip.y - bh} L ${last.tip.x + sw} ${last.tip.y - bh} L ${last.tip.x + sw} ${last.tip.y + bh} L ${first.tip.x - sw} ${first.tip.y + bh} Z`;
     svg.appendChild(el('path', { d: bd, fill: 'var(--beam)' }));
   }
 

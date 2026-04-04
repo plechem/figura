@@ -1,5 +1,5 @@
 // Figura Service Worker — offline-first cache
-const CACHE = 'figura-v5';
+const CACHE = 'figura-v6';
 const ASSETS = [
   './',
   './index.html',
