@@ -206,8 +206,8 @@
 </div>
 
 <div class="song-meta">
-  <span class="song-title">Christ Be Magnified</span>
-  <span class="song-key" id="keyLabel">Key of G · Bar 1</span>
+  <span class="song-title" id="songTitle">Praise The Lord Forever</span>
+  <span class="song-key" id="keyLabel">Key of G</span>
 </div>
 
 <div class="score-wrap" id="scoreWrap"></div>
@@ -221,56 +221,69 @@
 // DATA
 // ═══════════════════════════════════════════════════════════════════════════
 
+const NOTE = (id, degree, base, dots, stem, beamType, beamGroup, tieType, tieGroup) => ({
+  id, type: 'note', degree, accidental: null, octaveShift: 0,
+  duration: { base, dots: dots ?? 0, tuplet: null },
+  tie: { type: tieType ?? null, groupId: tieGroup ?? null },
+  beam: { type: beamType ?? null, groupId: beamGroup ?? null },
+  stem: stem ?? 'auto', midi: null,
+});
+
+const BAR = (id, idx, notes, chord) => ({
+  id, index: idx,
+  timeSignature: { beats: 4, division: 4 },
+  beamGrouping: [2, 2],
+  chordSymbol: chord ?? null,
+  notes,
+  displayOptions: { showReferenceLines: true, referenceLineStyle: 'dashed', size: 1.0 },
+});
+
 const DOC = {
-  title: 'Christ Be Magnified',
+  title: 'Praise The Lord Forever',
   key: 'G',
   keyMode: 'major',
   defaultTimeSignature: { beats: 4, division: 4 },
   bars: [
-    {
-      id: 'bar-001',
-      index: 0,
-      timeSignature: { beats: 4, division: 4 },
-      beamGrouping: [2, 2],
-      chordSymbol: {
-        degree: 1, accidental: null, quality: 'major', extensions: [],
-        bass: null, position: 'below', beatOffset: 0
-      },
-      notes: [
-        // Beat 1: beamed quaver pair (degrees 3 + 5)
-        {
-          id: 'n-001', type: 'note',
-          degree: 3, accidental: null, octaveShift: 0,
-          duration: { base: 'quaver', dots: 0, tuplet: null },
-          tie: { type: null }, beam: { type: 'start', groupId: 'bg-001' },
-          stem: 'up', midi: { pitch: 59 }
-        },
-        {
-          id: 'n-002', type: 'note',
-          degree: 5, accidental: null, octaveShift: 0,
-          duration: { base: 'quaver', dots: 0, tuplet: null },
-          tie: { type: null }, beam: { type: 'end', groupId: 'bg-001' },
-          stem: 'up', midi: { pitch: 62 }
-        },
-        // Beat 2: crotchet, degree 1 high (octaveShift 1)
-        {
-          id: 'n-003', type: 'note',
-          degree: 1, accidental: null, octaveShift: 1,
-          duration: { base: 'crotchet', dots: 0, tuplet: null },
-          tie: { type: null }, beam: { type: null, groupId: null },
-          stem: 'down', midi: { pitch: 67 }
-        },
-        // Beats 3–4: minim rest to complete the bar
-        {
-          id: 'r-001', type: 'rest',
-          degree: null, accidental: null, octaveShift: null,
-          duration: { base: 'minim', dots: 0, tuplet: null },
-          tie: { type: null }, beam: { type: null, groupId: null },
-          stem: null, midi: null
-        }
-      ],
-      displayOptions: { showReferenceLines: true, referenceLineStyle: 'dashed', size: 1.0 }
-    }
+    // Bar 1: minim 6, minim 3
+    BAR('bar-001', 0, [
+      NOTE('n-101', 6, 'minim', 0, 'down'),
+      NOTE('n-102', 3, 'minim', 0, 'up'),
+    ], { degree: 1, accidental: null, quality: 'major', extensions: [], bass: null, position: 'below', beatOffset: 0 }),
+
+    // Bar 2: whole 2
+    BAR('bar-002', 1, [
+      NOTE('n-201', 2, 'whole'),
+    ]),
+
+    // Bar 3: minim 5, minim 2
+    BAR('bar-003', 2, [
+      NOTE('n-301', 5, 'minim', 0, 'down'),
+      NOTE('n-302', 2, 'minim', 0, 'up'),
+    ]),
+
+    // Bar 4: whole 1
+    BAR('bar-004', 3, [
+      NOTE('n-401', 1, 'whole'),
+    ]),
+
+    // Bar 5: minim 6, minim 3
+    BAR('bar-005', 4, [
+      NOTE('n-501', 6, 'minim', 0, 'down'),
+      NOTE('n-502', 3, 'minim', 0, 'up'),
+    ]),
+
+    // Bar 6: dotted crotchet 2 | quaver 1 + quaver 2 (beamed) | dotted crotchet 1 (tie start)
+    BAR('bar-006', 5, [
+      NOTE('n-601', 2, 'crotchet', 1, 'up'),
+      NOTE('n-602', 1, 'quaver',   0, 'up', 'start', 'bg-b6'),
+      NOTE('n-603', 2, 'quaver',   0, 'up', 'end',   'bg-b6'),
+      NOTE('n-604', 1, 'crotchet', 1, 'up', null, null, 'start', 'tie-x'),
+    ]),
+
+    // Bar 7: whole 1 (tie end)
+    BAR('bar-007', 6, [
+      NOTE('n-701', 1, 'whole', 0, null, null, null, 'end', 'tie-x'),
+    ]),
   ]
 };
 
@@ -484,14 +497,12 @@ function drawNotehead(svg, x, y, duration, label) {
   const isMinim  = duration === 'minim';
   const isHollow = isWhole || isMinim;
 
-  if (!isWhole) {
-    svg.appendChild(el('ellipse', {
-      cx: x, cy: y, rx: NH.RX, ry: NH.RY,
-      fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
-      stroke: 'var(--note-fill)', 'stroke-width': 1.8,
-      transform: `rotate(${NH.ANGLE},${x},${y})`
-    }));
-  }
+  svg.appendChild(el('ellipse', {
+    cx: x, cy: y, rx: NH.RX, ry: NH.RY,
+    fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
+    stroke: 'var(--note-fill)', 'stroke-width': 1.8,
+    transform: `rotate(${NH.ANGLE},${x},${y})`
+  }));
 
   // Degree label — always upright, centred on notehead
   const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
@@ -650,7 +661,7 @@ function renderBar(bar, key, chordFormat) {
     // Augmentation dots
     if (n.duration.dots > 0) {
       for (let d = 0; d < n.duration.dots; d++) {
-        svg.appendChild(el('circle', { cx: x + L.NOTE_R + 5 + d * 7, cy: y - 3, r: 2.5, fill: 'var(--fg)' }));
+        svg.appendChild(el('circle', { cx: x + NH.RX + 6 + d * 7, cy: y - 3, r: 2.5, fill: 'var(--fg)' }));
       }
     }
 
@@ -665,25 +676,43 @@ function renderBar(bar, key, chordFormat) {
     }
   });
 
+  // ── Tie arcs ───────────────────────────────────────────────────────────
+  // Cross-bar ties: start note draws arc to right barline; end note draws arc from left barline
+  laid.forEach(({ n, x }) => {
+    if (n.type === 'rest' || !n.tie || !n.tie.type) return;
+    const y   = noteY(n.degree, n.octaveShift ?? 0);
+    const arcY = y + NH.RY + 5;   // arc sits just below the notehead
+    const bulge = arcY + 10;       // control point dips down
+    if (n.tie.type === 'start') {
+      const ex = L.RIGHT;
+      svg.appendChild(el('path', {
+        d: `M ${x} ${arcY} Q ${(x + ex) / 2} ${bulge} ${ex} ${arcY}`,
+        fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.4, opacity: '0.7'
+      }));
+    }
+    if (n.tie.type === 'end') {
+      const sx = L.LEFT;
+      svg.appendChild(el('path', {
+        d: `M ${sx} ${arcY} Q ${(sx + x) / 2} ${bulge} ${x} ${arcY}`,
+        fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.4, opacity: '0.7'
+      }));
+    }
+  });
+
   // ── Chord symbol ───────────────────────────────────────────────────────
   const chord = bar.chordSymbol;
-  const noteW = L.RIGHT - L.NOTE_START;
-  const chordX = L.NOTE_START + (chord.beatOffset / ts.beats) * noteW + 20;
-  const chordText = formatChordSymbol(chord, chordFormat, key);
-
-  const chordFont = chordFormat === 'roman'
-    ? "'EB Garamond', serif"
-    : "system-ui, sans-serif";
-
-  svg.appendChild(el('text', {
-    x: chordX, y: L.CHORD_Y,
-    fill: 'var(--chord)',
-    'font-size': '18',
-    'font-weight': '700',
-    'font-style': 'normal',
-    'font-family': chordFont,
-    'text-anchor': 'middle',
-  }, chordText));
+  if (chord) {
+    const noteW = L.RIGHT - L.NOTE_START;
+    const chordX = L.NOTE_START + (chord.beatOffset / ts.beats) * noteW + 20;
+    const chordText = formatChordSymbol(chord, chordFormat, key);
+    const chordFont = chordFormat === 'roman' ? "'EB Garamond', serif" : "system-ui, sans-serif";
+    svg.appendChild(el('text', {
+      x: chordX, y: L.CHORD_Y,
+      fill: 'var(--chord)',
+      'font-size': '18', 'font-weight': '700', 'font-style': 'normal',
+      'font-family': chordFont, 'text-anchor': 'middle',
+    }, chordText));
+  }
 
   return svg;
 }
@@ -698,7 +727,8 @@ function render() {
   const wrap = document.getElementById('scoreWrap');
   wrap.innerHTML = '';
   DOC.bars.forEach(bar => wrap.appendChild(renderBar(bar, state.key, state.format)));
-  document.getElementById('keyLabel').textContent = `Key of ${state.key} · Bar 1`;
+  document.getElementById('songTitle').textContent = DOC.title;
+  document.getElementById('keyLabel').textContent = `Key of ${state.key}`;
 }
 
 // ── Controls ───────────────────────────────────────────────────────────────
