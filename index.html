@@ -412,18 +412,25 @@ const L = {
 const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
 
 // Notehead geometry — tilted ellipse like standard notation
-const NH = { RX: 13, RY: 7, ANGLE: -30 }; // rotate 30° counter-clockwise (right side up)
+const NH = { RX: 13, RY: 9, ANGLE: -30 }; // rotate 30° counter-clockwise (right side up)
 const NH_RAD = NH.ANGLE * Math.PI / 180;
 
-// Returns the point where a stem attaches to the notehead
-// Up stem (dir=-1): right side of head (lower-right of major axis)
-// Down stem (dir=+1): left side of head (upper-left of major axis)
-function stemAttach(x, y, dir) {
-  const side = dir === -1 ? 1 : -1;
+// Returns the true rightmost (side=+1) or leftmost (side=-1) point on the
+// rotated ellipse — where a vertical stem's outer edge meets the notehead edge.
+function ellipseEdge(cx, cy, side) {
+  const cosA = Math.cos(NH_RAD), sinA = Math.sin(NH_RAD);
+  // Parameter t where dx/dt = 0 on the parametric rotated ellipse
+  const t0 = Math.atan2(-NH.RY * sinA, NH.RX * cosA);
+  const t  = side === 1 ? t0 : t0 + Math.PI;
   return {
-    x: x + side * NH.RX * Math.cos(NH_RAD),
-    y: y + side * NH.RX * Math.sin(NH_RAD),
+    x: cx + NH.RX * Math.cos(t) * cosA - NH.RY * Math.sin(t) * sinA,
+    y: cy + NH.RX * Math.cos(t) * sinA + NH.RY * Math.sin(t) * cosA,
   };
+}
+
+// Up stem (dir=-1) attaches at rightmost point; down stem at leftmost
+function stemAttach(x, y, dir) {
+  return ellipseEdge(x, y, dir === -1 ? 1 : -1);
 }
 
 function stemTipPt(attach, dir) {
