@@ -411,6 +411,25 @@ const L = {
 
 const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
 
+// Notehead geometry — tilted ellipse like standard notation
+const NH = { RX: 13, RY: 7, ANGLE: 30 }; // rotate 30° clockwise (right side down)
+const NH_RAD = NH.ANGLE * Math.PI / 180;
+
+// Returns the point where a stem attaches to the notehead
+// Up stem (dir=-1): right side of head (lower-right of major axis)
+// Down stem (dir=+1): left side of head (upper-left of major axis)
+function stemAttach(x, y, dir) {
+  const side = dir === -1 ? 1 : -1;
+  return {
+    x: x + side * NH.RX * Math.cos(NH_RAD),
+    y: y + side * NH.RX * Math.sin(NH_RAD),
+  };
+}
+
+function stemTipPt(attach, dir) {
+  return { x: attach.x, y: attach.y + dir * L.STEM_LEN };
+}
+
 function noteY(degree, octaveShift) {
   // degree 1 → LOWER_Y, degree 8 → UPPER_Y, linear
   const base = L.LOWER_Y - ((degree - 1) / 7) * SPAN;
@@ -435,21 +454,18 @@ function layoutNotes(notes, ts) {
 
 // ── Drawing helpers ───────────────────────────────────────────────────────
 
-function drawStem(svg, x, noteY, dir, len) {
-  // dir: -1 = up, +1 = down
+function drawStem(svg, ax, ay, tipX, tipY) {
   svg.appendChild(el('line', {
-    x1: x, y1: noteY + dir * L.NOTE_R * 0.6,
-    x2: x, y2: noteY + dir * (L.NOTE_R * 0.6 + len),
+    x1: ax, y1: ay, x2: tipX, y2: tipY,
     stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round'
   }));
 }
 
-function drawFlag(svg, x, tipY, dir) {
-  // dir: -1 = up (flag hangs down from tip), +1 = down (flag curves up from tip)
-  const fy = tipY + dir * 4;
+function drawFlag(svg, tipX, tipY, dir) {
+  // Flag always curves to the right of the stem tip
   const d = dir === -1
-    ? `M ${x} ${tipY} C ${x+14} ${tipY+8} ${x+16} ${tipY+20} ${x+6} ${tipY+28}`
-    : `M ${x} ${tipY} C ${x+14} ${tipY-8} ${x+16} ${tipY-20} ${x+6} ${tipY-28}`;
+    ? `M ${tipX} ${tipY} C ${tipX+14} ${tipY+8} ${tipX+16} ${tipY+20} ${tipX+6} ${tipY+28}`
+    : `M ${tipX} ${tipY} C ${tipX+14} ${tipY-8} ${tipX+16} ${tipY-20} ${tipX+6} ${tipY-28}`;
   svg.appendChild(el('path', { d, fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round' }));
 }
 
@@ -459,14 +475,15 @@ function drawNotehead(svg, x, y, duration, label) {
   const isHollow = isWhole || isMinim;
 
   if (!isWhole) {
-    svg.appendChild(el('circle', {
-      cx: x, cy: y, r: L.NOTE_R,
+    svg.appendChild(el('ellipse', {
+      cx: x, cy: y, rx: NH.RX, ry: NH.RY,
       fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
-      stroke: 'var(--note-fill)', 'stroke-width': 1.8
+      stroke: 'var(--note-fill)', 'stroke-width': 1.8,
+      transform: `rotate(${NH.ANGLE},${x},${y})`
     }));
   }
 
-  // Degree label
+  // Degree label — always upright, centred on notehead
   const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
   svg.appendChild(el('text', {
     x, y,
@@ -565,23 +582,27 @@ function renderBar(bar, key, chordFormat) {
   for (const members of Object.values(beamGroups)) {
     if (members.length < 2) continue;
     const dir = stemDir(members[0].n);
-    const tipY1 = noteY(members[0].n.degree, members[0].n.octaveShift) + dir * (L.NOTE_R * 0.6 + L.STEM_LEN);
-    const tipY2 = noteY(members[members.length-1].n.degree, members[members.length-1].n.octaveShift) + dir * (L.NOTE_R * 0.6 + L.STEM_LEN);
 
-    // Draw stems for each beamed note
-    members.forEach(({ n, x }) => {
+    const memberData = members.map(({ n, x }) => {
       const ny = noteY(n.degree, n.octaveShift);
-      const tipY = ny + dir * (L.NOTE_R * 0.6 + L.STEM_LEN);
+      const attach = stemAttach(x, ny, dir);
+      const tip = stemTipPt(attach, dir);
+      return { attach, tip };
+    });
+
+    // Stems
+    memberData.forEach(({ attach, tip }) => {
       svg.appendChild(el('line', {
-        x1: x, y1: ny + dir * L.NOTE_R * 0.6, x2: x, y2: tipY,
+        x1: attach.x, y1: attach.y, x2: tip.x, y2: tip.y,
         stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round'
       }));
     });
 
-    // Beam bar
+    // Beam bar connecting tips
+    const first = memberData[0], last = memberData[memberData.length - 1];
     svg.appendChild(el('line', {
-      x1: members[0].x, y1: tipY1,
-      x2: members[members.length-1].x, y2: tipY2,
+      x1: first.tip.x, y1: first.tip.y,
+      x2: last.tip.x,  y2: last.tip.y,
       stroke: 'var(--beam)', 'stroke-width': 5, 'stroke-linecap': 'square'
     }));
   }
@@ -604,11 +625,12 @@ function renderBar(bar, key, chordFormat) {
 
     // Stem (skip for whole notes and beamed notes — beamed stems drawn above)
     if (base !== 'whole' && !isBeamed) {
-      const tipY = y + dir * (L.NOTE_R * 0.6 + L.STEM_LEN);
-      drawStem(svg, x, y, dir, L.STEM_LEN);
+      const attach = stemAttach(x, y, dir);
+      const tip    = stemTipPt(attach, dir);
+      drawStem(svg, attach.x, attach.y, tip.x, tip.y);
       // Flag for unbeamed quaver/semiquaver
       if (base === 'quaver' || base === 'semiquaver') {
-        drawFlag(svg, x, tipY, dir);
+        drawFlag(svg, tip.x, tip.y, dir);
       }
     }
 
