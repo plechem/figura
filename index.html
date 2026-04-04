@@ -470,16 +470,15 @@ const BEAT_VAL = {
   whole: 4, minim: 2, crotchet: 1, quaver: 0.5, semiquaver: 0.25, demisemiquaver: 0.125
 };
 
-// Assign beat-proportional x positions to all notes in a bar.
-// Whole notes align at beat start (+ 0.5 beat padding) so they line up with chord symbols.
-// All other notes are centred within their duration as before.
-function layoutNotes(notes, ts, noteStart) {
-  const noteW = L.RIGHT - noteStart;
+// Proportional beat-start layout.
+// Every note sits at the x corresponding to its beat position — no centering.
+// Two quavers therefore occupy the same horizontal span as one crotchet.
+// areaLeft and areaWidth are passed in so chord symbols use the identical formula.
+function layoutNotes(notes, ts, areaLeft, areaWidth) {
   let beat = 0;
   return notes.map(n => {
     const dur = BEAT_VAL[n.duration.base] * (n.duration.dots === 1 ? 1.5 : n.duration.dots === 2 ? 1.75 : 1);
-    const centering = (n.duration.base === 'whole') ? 0.5 : dur / 2;
-    const x = noteStart + ((beat + centering) / ts.beats) * noteW;
+    const x = areaLeft + (beat / ts.beats) * areaWidth;
     beat += dur;
     return { n, x, dur };
   });
@@ -577,8 +576,12 @@ function drawRest(svg, x, base) {
 
 function renderBar(bar, key, chordFormat, showTS = false) {
   const ts = bar.timeSignature;
-  const noteStart = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
-  const noteW = L.RIGHT - noteStart;
+  const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
+  // Note area: fixed left margin from barline so beat-1 is always at the same x,
+  // and a small right margin so the last note doesn't crowd the barline.
+  const NOTE_AREA_LEFT  = noteStart + 22;
+  const NOTE_AREA_RIGHT = L.RIGHT - 18;
+  const NOTE_AREA_W     = NOTE_AREA_RIGHT - NOTE_AREA_LEFT;
   const svg = el('svg', { viewBox: `0 0 ${L.W} ${L.H}`, xmlns: NS });
 
   // ── Reference lines ────────────────────────────────────────────────────
@@ -605,7 +608,7 @@ function renderBar(bar, key, chordFormat, showTS = false) {
   }
 
   // ── Layout notes ───────────────────────────────────────────────────────
-  const laid = layoutNotes(bar.notes, ts, noteStart);
+  const laid = layoutNotes(bar.notes, ts, NOTE_AREA_LEFT, NOTE_AREA_W);
 
   // ── Beams (drawn first, behind noteheads) ──────────────────────────────
   const beamGroups = {};
@@ -709,8 +712,8 @@ function renderBar(bar, key, chordFormat, showTS = false) {
   // ── Chord symbols ──────────────────────────────────────────────────────
   const chordFont = chordFormat === 'roman' ? "'EB Garamond', serif" : "system-ui, sans-serif";
   (bar.chordSymbols || []).forEach(chord => {
-    // Use same formula as whole-note positioning: beatOffset + 0.5 half-beat padding
-    const chordX = noteStart + ((chord.beatOffset + 0.5) / ts.beats) * noteW;
+    // Same formula as note layout — beat-start, so chord aligns with its note
+    const chordX = NOTE_AREA_LEFT + (chord.beatOffset / ts.beats) * NOTE_AREA_W;
     svg.appendChild(el('text', {
       x: chordX, y: L.CHORD_Y,
       fill: 'var(--chord)',
