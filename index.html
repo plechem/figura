@@ -328,60 +328,66 @@ const SONGS = {
     keyMode: 'major',
     defaultTimeSignature: { beats: 4, division: 4 },
     bars: [
-      // Pickup bar: 3 quavers (1.5 beats), right-aligned at beat 2.5
-      // deg3 quaver, deg5 quaver, deg6 quaver [tie-start wm-ta]
+      // Pickup bar: 3 quavers (1.5 beats) right-aligned at beat 2.5.
+      // We joined at beat 2.5, so: one solo quaver (beat 2.5), then two beamed quavers (beats 3 & 3.5).
       BAR('wm-p', 0, [
         NOTE('wmp-1', 3, 'quaver', 0, 'up'),
-        NOTE('wmp-2', 5, 'quaver', 0, 'up'),
-        NOTE('wmp-3', 6, 'quaver', 0, 'up', null, null, 'start', 'wm-ta'),
+        NOTE('wmp-2', 5, 'quaver', 0, 'up', 'start', 'wmp-g1'),
+        NOTE('wmp-3', 6, 'quaver', 0, 'up', 'end',   'wmp-g1', 'start', 'wm-ta'),
       ], [], { pickup: true, pickupBeats: 1.5 }),
 
       // Bar 1 (elapsed 0–4):
-      // beat 0: deg6 minim [tie-end wm-ta]                    2.0 beats
-      // beat 2: deg6 quaver [beam b1g3 start]                 0.5 beats
-      // beat 2.5: deg6 semiquaver [beam b1g3 end]             0.25 beats
-      // beat 2.75: deg6 quaver (unbeamed, crosses beat)       0.5 beats
-      // beat 3.25: deg5 quaver [beam b1g4 start]              0.5 beats
-      // beat 3.75: deg3 semiquaver [beam b1g4 end, tie-start wm-tb] 0.25 beats
+      // beat 0:    deg6 minim [tie-end wm-ta]                          2.0 beats
+      // beat 2.0:  deg6 quaver  [beam b1g3 start]     \               0.5 beats
+      // beat 2.5:  deg6 semiq   [beam b1g3 mid]        beat 3 group   0.25 beats
+      // beat 2.75: deg6 semiq   [beam b1g3 end, tie→wm-te]           0.25 beats
+      // beat 3.0:  deg6 semiq   [beam b1g4 start, tie-end wm-te] \   0.25 beats
+      // beat 3.25: deg5 quaver  [beam b1g4 mid]                   beat 4 group 0.5 beats
+      // beat 3.75: deg3 semiq   [beam b1g4 end, tie-start wm-tb]     0.25 beats
       BAR('wm-1', 1, [
         NOTE('wm1-1', 6, 'minim',      0, 'down', null,    null,   'end',   'wm-ta'),
         NOTE('wm1-2', 6, 'quaver',     0, 'up',   'start', 'b1g3'),
-        NOTE('wm1-3', 6, 'semiquaver', 0, 'up',   'end',   'b1g3'),
-        NOTE('wm1-4', 6, 'quaver',     0, 'up'),
-        NOTE('wm1-5', 5, 'quaver',     0, 'up',   'start', 'b1g4'),
-        NOTE('wm1-6', 3, 'semiquaver', 0, 'up',   'end',   'b1g4', 'start', 'wm-tb'),
+        NOTE('wm1-3', 6, 'semiquaver', 0, 'up',   'mid',   'b1g3'),
+        NOTE('wm1-4', 6, 'semiquaver', 0, 'up',   'end',   'b1g3', 'start', 'wm-te'),
+        NOTE('wm1-5', 6, 'semiquaver', 0, 'up',   'start', 'b1g4', 'end',   'wm-te'),
+        NOTE('wm1-6', 5, 'quaver',     0, 'up',   'mid',   'b1g4'),
+        NOTE('wm1-7', 3, 'semiquaver', 0, 'up',   'end',   'b1g4', 'start', 'wm-tb'),
       ], []),
 
       // Bar 2 (elapsed 0–4):
-      // beat 0: deg3 minim [tie-end wm-tb]                   2.0 beats
-      // beat 2: quaver rest                                   0.5 beats
-      // beat 2.5: deg1 semiquaver                            0.25 beats
-      // beat 2.75: deg5 dotted quaver                        0.75 beats
-      // beat 3.5: deg1 semiquaver [beam b2g4 start]          0.25 beats
-      // beat 3.75: deg2 semiquaver [beam b2g4 end, tie-start wm-tc] 0.25 beats
+      // beat 0:    deg3 minim [tie-end wm-tb]                          2.0 beats
+      // beat 2.0:  quaver rest                                         0.5 beats
+      // beat 2.5:  deg1 semiq  [beam b2g3 start] \  beat 3 group      0.25 beats
+      // beat 2.75: deg5 semiq  [beam b2g3 end, tie→wm-tf]            0.25 beats
+      // beat 3.0:  deg5 quaver [beam b2g4 start, tie-end wm-tf] \    0.5 beats
+      // beat 3.5:  deg1 semiq  [beam b2g4 mid]                   beat 4 group 0.25 beats
+      // beat 3.75: deg2 semiq  [beam b2g4 end, tie-start wm-tc]      0.25 beats
       BAR('wm-2', 2, [
         NOTE('wm2-1', 3, 'minim',      0, 'up',   null,    null,   'end',   'wm-tb'),
         REST('wm2-r1', 'quaver', 0),
-        NOTE('wm2-2', 1, 'semiquaver', 0, 'up'),
-        NOTE('wm2-3', 5, 'quaver',     1, 'up'),
-        NOTE('wm2-4', 1, 'semiquaver', 0, 'up',   'start', 'b2g4'),
-        NOTE('wm2-5', 2, 'semiquaver', 0, 'up',   'end',   'b2g4', 'start', 'wm-tc'),
+        NOTE('wm2-2', 1, 'semiquaver', 0, 'up',   'start', 'b2g3'),
+        NOTE('wm2-3', 5, 'semiquaver', 0, 'up',   'end',   'b2g3', 'start', 'wm-tf'),
+        NOTE('wm2-4', 5, 'quaver',     0, 'up',   'start', 'b2g4', 'end',   'wm-tf'),
+        NOTE('wm2-5', 1, 'semiquaver', 0, 'up',   'mid',   'b2g4'),
+        NOTE('wm2-6', 2, 'semiquaver', 0, 'up',   'end',   'b2g4', 'start', 'wm-tc'),
       ], []),
 
       // Bar 3 (elapsed 0–4):
-      // beat 0: deg2 minim [tie-end wm-tc]                   2.0 beats
-      // beat 2: quaver rest                                   0.5 beats
-      // beat 2.5: deg1 semiquaver                            0.25 beats
-      // beat 2.75: deg3 dotted quaver                        0.75 beats
-      // beat 3.5: deg1 semiquaver [beam b3g4 start]          0.25 beats
-      // beat 3.75: deg6 semiquaver oct-1 [beam b3g4 end, tie-start wm-td] 0.25 beats
+      // beat 0:    deg2 minim [tie-end wm-tc]                          2.0 beats
+      // beat 2.0:  quaver rest                                         0.5 beats
+      // beat 2.5:  deg1 semiq  [beam b3g3 start] \  beat 3 group      0.25 beats
+      // beat 2.75: deg3 semiq  [beam b3g3 end, tie→wm-tg]            0.25 beats
+      // beat 3.0:  deg3 quaver [beam b3g4 start, tie-end wm-tg] \    0.5 beats
+      // beat 3.5:  deg1 semiq  [beam b3g4 mid]                   beat 4 group 0.25 beats
+      // beat 3.75: deg6 semiq oct-1 [beam b3g4 end, tie-start wm-td] 0.25 beats
       BAR('wm-3', 3, [
         NOTE('wm3-1', 2, 'minim',      0, 'up',   null,    null,   'end',   'wm-tc'),
         REST('wm3-r1', 'quaver', 0),
-        NOTE('wm3-2', 1, 'semiquaver', 0, 'up'),
-        NOTE('wm3-3', 3, 'quaver',     1, 'up'),
-        NOTE('wm3-4', 1, 'semiquaver', 0, 'up',   'start', 'b3g4'),
-        NOTE('wm3-5', 6, 'semiquaver', 0, 'up',   'end',   'b3g4', 'start', 'wm-td', -1),
+        NOTE('wm3-2', 1, 'semiquaver', 0, 'up',   'start', 'b3g3'),
+        NOTE('wm3-3', 3, 'semiquaver', 0, 'up',   'end',   'b3g3', 'start', 'wm-tg'),
+        NOTE('wm3-4', 3, 'quaver',     0, 'up',   'start', 'b3g4', 'end',   'wm-tg'),
+        NOTE('wm3-5', 1, 'semiquaver', 0, 'up',   'mid',   'b3g4'),
+        NOTE('wm3-6', 6, 'semiquaver', 0, 'up',   'end',   'b3g4', 'start', 'wm-td', -1),
       ], []),
 
       // Bar 4 (elapsed 0–4):
@@ -819,22 +825,38 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const bd = `M ${first.tip.x - sw} ${first.tip.y - bh} L ${last.tip.x + sw} ${last.tip.y - bh} L ${last.tip.x + sw} ${last.tip.y + bh} L ${first.tip.x - sw} ${first.tip.y + bh} Z`;
     svg.appendChild(el('path', { d: bd, fill: 'var(--beam)' }));
 
-    // Secondary beams for semiquaver members
-    const beamGap = bh * 2 + 2;   // distance between beam centres
-    const stubW   = 14;             // stub width for secondary beam
-    memberData.forEach(({ n }, mi) => {
-      if (n.duration.base !== 'semiquaver') return;
-      const { tip } = memberData[mi];
-      // Secondary beam is closer to notehead than primary
-      const secY = tip.y - dir * beamGap;
-      const isLast2 = mi === members.length - 1;
-      const x1 = isLast2 ? tip.x - stubW - sw : tip.x - sw;
-      const x2 = isLast2 ? tip.x + sw         : tip.x + stubW + sw;
-      svg.appendChild(el('path', {
-        d: `M ${x1} ${secY - bh} L ${x2} ${secY - bh} L ${x2} ${secY + bh} L ${x1} ${secY + bh} Z`,
-        fill: 'var(--beam)',
-      }));
-    });
+    // Secondary beams: full beam between consecutive semiquavers; stub where a semiquaver meets a quaver
+    const beamGap = bh * 2 + 2;   // distance between primary and secondary beam centres
+    const stubW   = 14;            // stub half-width for an isolated semiquaver
+    let si = 0;
+    while (si < memberData.length) {
+      if (memberData[si].n.duration.base !== 'semiquaver') { si++; continue; }
+      // Find end of consecutive semiquaver run
+      let ei = si;
+      while (ei + 1 < memberData.length && memberData[ei + 1].n.duration.base === 'semiquaver') ei++;
+      if (ei > si) {
+        // Full secondary beam spanning the run — same slope as primary
+        const t0 = memberData[si].tip, t1 = memberData[ei].tip;
+        const sy0 = t0.y - dir * beamGap, sy1 = t1.y - dir * beamGap;
+        svg.appendChild(el('path', {
+          d: `M ${t0.x - sw} ${sy0 - bh} L ${t1.x + sw} ${sy1 - bh} L ${t1.x + sw} ${sy1 + bh} L ${t0.x - sw} ${sy0 + bh} Z`,
+          fill: 'var(--beam)',
+        }));
+        si = ei + 1;
+      } else {
+        // Isolated semiquaver — stub extends toward group centre
+        const tip = memberData[si].tip;
+        const secY = tip.y - dir * beamGap;
+        const atEnd = si === memberData.length - 1 && si > 0;
+        const x1 = atEnd ? tip.x - stubW - sw : tip.x - sw;
+        const x2 = atEnd ? tip.x + sw         : tip.x + stubW + sw;
+        svg.appendChild(el('path', {
+          d: `M ${x1} ${secY - bh} L ${x2} ${secY - bh} L ${x2} ${secY + bh} L ${x1} ${secY + bh} Z`,
+          fill: 'var(--beam)',
+        }));
+        si++;
+      }
+    }
   }
 
   // ── Notes and rests ────────────────────────────────────────────────────
@@ -887,17 +909,34 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   });
 
   // ── Tie arcs ───────────────────────────────────────────────────────────
+  // First pass: detect within-bar ties (start and end both present in this bar)
+  // and draw them directly between the two note x-positions.
+  const _tieStartsInBar = new Map();  // groupId → {x, arcY}
+  const _withinBarTies  = new Set();  // groupIds fully resolved within this bar
+  laid.forEach(({ n, x }) => {
+    if (n.type === 'rest' || !n.tie?.type) return;
+    const tt = n.tie.type, gid = n.tie.groupId;
+    const arcY = nY(n.degree, n.octaveShift ?? 0) + NH.RY + 5;
+    if (tt === 'start') {
+      _tieStartsInBar.set(gid, { x, arcY });
+    } else if (tt === 'end' && _tieStartsInBar.has(gid)) {
+      const { x: sx, arcY: ay } = _tieStartsInBar.get(gid);
+      drawTieArc(svg, sx, x, ay);
+      _withinBarTies.add(gid);
+    }
+  });
+  // Second pass: system-edge half-arcs for cross-barline ties.
   // 'start'    → arc from note to SVG right edge
   // 'end'      → arc from SVG left edge to note
-  // 'continue' → both (mid-chain: ties in from prev bar AND out to next bar)
-  // Same-row spanning arcs are drawn on a row overlay; the relevant half-arcs
-  // are suppressed here via suppressTieStarts / suppressTieEnds.
+  // 'continue' → both (mid-chain: ties in AND out across barlines)
+  // Same-row spanning arcs are drawn on a row overlay; relevant half-arcs
+  // are suppressed via suppressTieStarts / suppressTieEnds.
   laid.forEach(({ n, x }) => {
-    if (n.type === 'rest' || !n.tie || !n.tie.type) return;
-    const tt   = n.tie.type;
-    const gid  = n.tie.groupId;
-    const y    = nY(n.degree, n.octaveShift ?? 0);
-    const arcY = y + NH.RY + 5;
+    if (n.type === 'rest' || !n.tie?.type) return;
+    const tt  = n.tie.type;
+    const gid = n.tie.groupId;
+    if (_withinBarTies.has(gid)) return;  // already drawn above
+    const arcY = nY(n.degree, n.octaveShift ?? 0) + NH.RY + 5;
     if ((tt === 'start' || tt === 'continue') && !suppressTieStarts.has(gid)) {
       drawTieArc(svg, x, L.W - 2, arcY);
     }
