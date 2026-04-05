@@ -68,3 +68,5 @@ Enable GitHub Pages on the repo so the proof of concept is viewable in a browser
 
 **Time signature on a three-line staff:** When a bar has three tonic lines, the time signature numerals must fill the full height from the outermost top line to the outermost bottom line (not just the inner two-line span as on a standard bar). The middle tonic line sits at the vertical centre of the time signature, so the two numerals sit in the upper and lower halves respectively. This makes the time signature an immediate visual indicator that this is a three-line staff.
 
+**Barlines on a three-line staff:** Barlines span the full height of all three tonic lines — from the outermost top line to the outermost bottom line. They do not stop at the original inner two lines.
+
