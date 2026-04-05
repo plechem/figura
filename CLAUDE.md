@@ -66,3 +66,5 @@ Enable GitHub Pages on the repo so the proof of concept is viewable in a browser
 
 **Implication for the renderer:** Before drawing a bar, scan its notes for the octaveShift range. If any note has octaveShift ≥ 1, extend the SVG height upward and draw the third line at UPPER_Y − SPAN. If any note has octaveShift ≤ −1, extend downward and draw the line at LOWER_Y + SPAN. Chord symbols and stems adjust accordingly.
 
+**Time signature on a three-line staff:** When a bar has three tonic lines, the time signature numerals must fill the full height from the outermost top line to the outermost bottom line (not just the inner two-line span as on a standard bar). The middle tonic line sits at the vertical centre of the time signature, so the two numerals sit in the upper and lower halves respectively. This makes the time signature an immediate visual indicator that this is a three-line staff.
+
