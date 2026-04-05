@@ -236,11 +236,19 @@
 // DATA
 // ═══════════════════════════════════════════════════════════════════════════
 
-const NOTE = (id, degree, base, dots, stem, beamType, beamGroup, tieType, tieGroup, octaveShift = 0) => ({
+// Beam groups per time signature:
+//   Simple time (x/4, x/2)  — one group per beat (1 division note wide)
+//   Compound time (6/8 etc.) — one group per 3 division notes
+function defaultBeamGrouping(ts) {
+  if (ts.division === 8 && ts.beats % 3 === 0) return Array(ts.beats / 3).fill(3);
+  return Array(ts.beats).fill(1);
+}
+
+// Beam fields are no longer stored on notes — the renderer derives them automatically.
+const NOTE = (id, degree, base, dots, stem, tieType, tieGroup, octaveShift = 0) => ({
   id, type: 'note', degree, accidental: null, octaveShift,
   duration: { base, dots: dots ?? 0, tuplet: null },
   tie: { type: tieType ?? null, groupId: tieGroup ?? null },
-  beam: { type: beamType ?? null, groupId: beamGroup ?? null },
   stem: stem ?? 'auto', midi: null,
 });
 
@@ -248,7 +256,6 @@ const REST = (id, base, dots) => ({
   id, type: 'rest',
   duration: { base, dots: dots ?? 0, tuplet: null },
   tie: { type: null, groupId: null },
-  beam: { type: null, groupId: null },
 });
 
 const CHORD = (degree, quality, beatOffset, accidental) => ({
@@ -256,16 +263,19 @@ const CHORD = (degree, quality, beatOffset, accidental) => ({
   extensions: [], bass: null, position: 'below', beatOffset,
 });
 
-const BAR = (id, idx, notes, chords, opts = {}) => ({
-  id, index: idx,
-  timeSignature: { beats: 4, division: 4 },
-  beamGrouping: [2, 2],
-  chordSymbols: chords ?? [],
-  notes,
-  pickup: opts.pickup ?? false,
-  pickupBeats: opts.pickupBeats ?? null,
-  displayOptions: { showReferenceLines: true, referenceLineStyle: 'dashed', size: 1.0 },
-});
+const BAR = (id, idx, notes, chords, opts = {}) => {
+  const ts = { beats: 4, division: 4 };
+  return {
+    id, index: idx,
+    timeSignature: ts,
+    beamGrouping: defaultBeamGrouping(ts),
+    chordSymbols: chords ?? [],
+    notes,
+    pickup: opts.pickup ?? false,
+    pickupBeats: opts.pickupBeats ?? null,
+    displayOptions: { showReferenceLines: true, referenceLineStyle: 'dashed', size: 1.0 },
+  };
+};
 
 const SONGS = {
   praise: {
@@ -307,17 +317,17 @@ const SONGS = {
         NOTE('n-601', 2, 'crotchet', 1, 'up'),
         NOTE('n-602', 1, 'quaver',   0, 'up'),
         NOTE('n-603', 2, 'quaver',   0, 'up'),
-        NOTE('n-604', 1, 'crotchet', 1, 'up', null, null, 'start', 'tie-x'),
+        NOTE('n-604', 1, 'crotchet', 1, 'up', 'start', 'tie-x'),
       ], [CHORD(5, 'major', 0)]),
 
       // Bar 7: whole 1 (tie continue — end of bar 6 tie, start of bar 8 tie) — chord 1
       BAR('bar-007', 6, [
-        NOTE('n-701', 1, 'whole', 0, null, null, null, 'continue', 'tie-x'),
+        NOTE('n-701', 1, 'whole', 0, null, 'continue', 'tie-x'),
       ], [CHORD(1, 'major', 0)]),
 
       // Bar 8: whole 1 (tie end — tied from bar 7)
       BAR('bar-008', 7, [
-        NOTE('n-801', 1, 'whole', 0, null, null, null, 'end', 'tie-x'),
+        NOTE('n-801', 1, 'whole', 0, null, 'end', 'tie-x'),
       ], []),
     ]
   },
@@ -329,72 +339,51 @@ const SONGS = {
     defaultTimeSignature: { beats: 4, division: 4 },
     bars: [
       // Pickup bar: 3 quavers (1.5 beats) right-aligned at beat 2.5.
-      // We joined at beat 2.5, so: one solo quaver (beat 2.5), then two beamed quavers (beats 3 & 3.5).
+      // Beam groups: beat 2 → solo quaver; beat 3 → pair beamed together.
       BAR('wm-p', 0, [
         NOTE('wmp-1', 3, 'quaver', 0, 'up'),
-        NOTE('wmp-2', 5, 'quaver', 0, 'up', 'start', 'wmp-g1'),
-        NOTE('wmp-3', 6, 'quaver', 0, 'up', 'end',   'wmp-g1', 'start', 'wm-ta'),
+        NOTE('wmp-2', 5, 'quaver', 0, 'up'),
+        NOTE('wmp-3', 6, 'quaver', 0, 'up', 'start', 'wm-ta'),
       ], [], { pickup: true, pickupBeats: 1.5 }),
 
-      // Bar 1 (elapsed 0–4):
-      // beat 0:    deg6 minim [tie-end wm-ta]                          2.0 beats
-      // beat 2.0:  deg6 quaver  [beam b1g3 start]     \               0.5 beats
-      // beat 2.5:  deg6 semiq   [beam b1g3 mid]        beat 3 group   0.25 beats
-      // beat 2.75: deg6 semiq   [beam b1g3 end, tie→wm-te]           0.25 beats
-      // beat 3.0:  deg6 semiq   [beam b1g4 start, tie-end wm-te] \   0.25 beats
-      // beat 3.25: deg5 quaver  [beam b1g4 mid]                   beat 4 group 0.5 beats
-      // beat 3.75: deg3 semiq   [beam b1g4 end, tie-start wm-tb]     0.25 beats
+      // Bar 1: minim | beat3: quaver+semiq+semiq (tied at beat boundary) | beat4: semiq+quaver+semiq
       BAR('wm-1', 1, [
-        NOTE('wm1-1', 6, 'minim',      0, 'down', null,    null,   'end',   'wm-ta'),
-        NOTE('wm1-2', 6, 'quaver',     0, 'up',   'start', 'b1g3'),
-        NOTE('wm1-3', 6, 'semiquaver', 0, 'up',   'mid',   'b1g3'),
-        NOTE('wm1-4', 6, 'semiquaver', 0, 'up',   'end',   'b1g3', 'start', 'wm-te'),
-        NOTE('wm1-5', 6, 'semiquaver', 0, 'up',   'start', 'b1g4', 'end',   'wm-te'),
-        NOTE('wm1-6', 5, 'quaver',     0, 'up',   'mid',   'b1g4'),
-        NOTE('wm1-7', 3, 'semiquaver', 0, 'up',   'end',   'b1g4', 'start', 'wm-tb'),
+        NOTE('wm1-1', 6, 'minim',      0, 'down', 'end',   'wm-ta'),
+        NOTE('wm1-2', 6, 'quaver',     0, 'up'),
+        NOTE('wm1-3', 6, 'semiquaver', 0, 'up'),
+        NOTE('wm1-4', 6, 'semiquaver', 0, 'up',   'start', 'wm-te'),
+        NOTE('wm1-5', 6, 'semiquaver', 0, 'up',   'end',   'wm-te'),
+        NOTE('wm1-6', 5, 'quaver',     0, 'up'),
+        NOTE('wm1-7', 3, 'semiquaver', 0, 'up',   'start', 'wm-tb'),
       ], []),
 
-      // Bar 2 (elapsed 0–4):
-      // beat 0:    deg3 minim [tie-end wm-tb]                          2.0 beats
-      // beat 2.0:  quaver rest                                         0.5 beats
-      // beat 2.5:  deg1 semiq  [beam b2g3 start] \  beat 3 group      0.25 beats
-      // beat 2.75: deg5 semiq  [beam b2g3 end, tie→wm-tf]            0.25 beats
-      // beat 3.0:  deg5 quaver [beam b2g4 start, tie-end wm-tf] \    0.5 beats
-      // beat 3.5:  deg1 semiq  [beam b2g4 mid]                   beat 4 group 0.25 beats
-      // beat 3.75: deg2 semiq  [beam b2g4 end, tie-start wm-tc]      0.25 beats
+      // Bar 2: minim | beat3: rest + semiq+semiq (tied at beat boundary) | beat4: quaver+semiq+semiq
       BAR('wm-2', 2, [
-        NOTE('wm2-1', 3, 'minim',      0, 'up',   null,    null,   'end',   'wm-tb'),
+        NOTE('wm2-1', 3, 'minim',      0, 'up',   'end',   'wm-tb'),
         REST('wm2-r1', 'quaver', 0),
-        NOTE('wm2-2', 1, 'semiquaver', 0, 'up',   'start', 'b2g3'),
-        NOTE('wm2-3', 5, 'semiquaver', 0, 'up',   'end',   'b2g3', 'start', 'wm-tf'),
-        NOTE('wm2-4', 5, 'quaver',     0, 'up',   'start', 'b2g4', 'end',   'wm-tf'),
-        NOTE('wm2-5', 1, 'semiquaver', 0, 'up',   'mid',   'b2g4'),
-        NOTE('wm2-6', 2, 'semiquaver', 0, 'up',   'end',   'b2g4', 'start', 'wm-tc'),
+        NOTE('wm2-2', 1, 'semiquaver', 0, 'up'),
+        NOTE('wm2-3', 5, 'semiquaver', 0, 'up',   'start', 'wm-tf'),
+        NOTE('wm2-4', 5, 'quaver',     0, 'up',   'end',   'wm-tf'),
+        NOTE('wm2-5', 1, 'semiquaver', 0, 'up'),
+        NOTE('wm2-6', 2, 'semiquaver', 0, 'up',   'start', 'wm-tc'),
       ], []),
 
-      // Bar 3 (elapsed 0–4):
-      // beat 0:    deg2 minim [tie-end wm-tc]                          2.0 beats
-      // beat 2.0:  quaver rest                                         0.5 beats
-      // beat 2.5:  deg1 semiq  [beam b3g3 start] \  beat 3 group      0.25 beats
-      // beat 2.75: deg3 semiq  [beam b3g3 end, tie→wm-tg]            0.25 beats
-      // beat 3.0:  deg3 quaver [beam b3g4 start, tie-end wm-tg] \    0.5 beats
-      // beat 3.5:  deg1 semiq  [beam b3g4 mid]                   beat 4 group 0.25 beats
-      // beat 3.75: deg6 semiq oct-1 [beam b3g4 end, tie-start wm-td] 0.25 beats
+      // Bar 3: minim | beat3: rest + semiq+semiq (tied at beat boundary) | beat4: quaver+semiq+semiq(oct-1)
       BAR('wm-3', 3, [
-        NOTE('wm3-1', 2, 'minim',      0, 'up',   null,    null,   'end',   'wm-tc'),
+        NOTE('wm3-1', 2, 'minim',      0, 'up',   'end',   'wm-tc'),
         REST('wm3-r1', 'quaver', 0),
-        NOTE('wm3-2', 1, 'semiquaver', 0, 'up',   'start', 'b3g3'),
-        NOTE('wm3-3', 3, 'semiquaver', 0, 'up',   'end',   'b3g3', 'start', 'wm-tg'),
-        NOTE('wm3-4', 3, 'quaver',     0, 'up',   'start', 'b3g4', 'end',   'wm-tg'),
-        NOTE('wm3-5', 1, 'semiquaver', 0, 'up',   'mid',   'b3g4'),
-        NOTE('wm3-6', 6, 'semiquaver', 0, 'up',   'end',   'b3g4', 'start', 'wm-td', -1),
+        NOTE('wm3-2', 1, 'semiquaver', 0, 'up'),
+        NOTE('wm3-3', 3, 'semiquaver', 0, 'up',   'start', 'wm-tg'),
+        NOTE('wm3-4', 3, 'quaver',     0, 'up',   'end',   'wm-tg'),
+        NOTE('wm3-5', 1, 'semiquaver', 0, 'up'),
+        NOTE('wm3-6', 6, 'semiquaver', 0, 'up',   'start', 'wm-td', -1),
       ], []),
 
       // Bar 4 (elapsed 0–4):
       // beat 0: deg6 minim oct-1 [tie-end wm-td]             2.0 beats
       // beat 2: minim rest                                    2.0 beats
       BAR('wm-4', 4, [
-        NOTE('wm4-1', 6, 'minim', 0, 'down', null, null, 'end', 'wm-td', -1),
+        NOTE('wm4-1', 6, 'minim', 0, 'down', 'end', 'wm-td', -1),
         REST('wm4-r1', 'minim', 0),
       ], []),
     ]
@@ -587,8 +576,9 @@ function layoutNotes(notes, ts, areaLeft, areaWidth, startBeat = 0) {
   return notes.map(n => {
     const dur = BEAT_VAL[n.duration.base] * (n.duration.dots === 1 ? 1.5 : n.duration.dots === 2 ? 1.75 : 1);
     const x = areaLeft + (beat / ts.beats) * areaWidth;
+    const b = beat;
     beat += dur;
-    return { n, x, dur };
+    return { n, x, dur, beat: b };
   });
 }
 
@@ -791,12 +781,7 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   const laid = layoutNotes(bar.notes, ts, NOTE_AREA_LEFT, NOTE_AREA_W, startBeat);
 
   // ── Beams (drawn first, behind noteheads) ──────────────────────────────
-  const beamGroups = {};
-  laid.forEach(({ n, x }) => {
-    if (n.beam && n.beam.groupId) {
-      (beamGroups[n.beam.groupId] ??= []).push({ n, x });
-    }
-  });
+  const { beamGroups, beamedIds } = computeAutoBeams(laid, bar);
 
   for (const members of Object.values(beamGroups)) {
     if (members.length < 2) continue;
@@ -870,7 +855,7 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const dir = stemDir(n);
     const lbl = degreeLabel(n.degree, n.accidental);
     const base = n.duration.base;
-    const isBeamed = n.beam && n.beam.type !== null;
+    const isBeamed = beamedIds.has(n.id);
 
     // Notehead
     drawNotehead(svg, x, y, base, lbl);
@@ -965,19 +950,14 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
 // LAYOUT
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Compute how many notes actually occupy horizontal space (notes, not rests,
-// grouped by beam so a pair of beamed quavers counts as ~1.5 note-slots).
+// Compute how many note-slots a bar occupies for layout purposes.
+// Short notes (quaver and below) are weighted at 0.6 — they're compact when beamed.
 function noteDensity(bar) {
   let slots = 0;
-  const seen = new Set();
   bar.notes.forEach(n => {
     if (n.type === 'rest') return;
-    if (n.beam && n.beam.groupId) {
-      if (!seen.has(n.beam.groupId)) { seen.add(n.beam.groupId); slots += 1.2; }
-      else slots += 0.4;
-    } else {
-      slots += 1;
-    }
+    const short = n.duration.base === 'quaver' || n.duration.base === 'semiquaver' || n.duration.base === 'demisemiquaver';
+    slots += short ? 0.6 : 1;
   });
   return Math.max(1, slots);
 }
@@ -991,6 +971,54 @@ function barNotePositions(bar, showTS) {
   const startBeat = (bar.pickup && bar.pickupBeats != null)
     ? bar.timeSignature.beats - bar.pickupBeats : 0;
   return layoutNotes(bar.notes, bar.timeSignature, NOTE_AREA_LEFT, NOTE_AREA_W, startBeat);
+}
+
+// Auto-compute beam groups for a bar from its beamGrouping and time signature.
+// Returns { beamGroups: {id → [{n,x}]}, beamedIds: Set<noteId> }
+// Rules: quaver/semiquaver/demisemiquaver notes within the same beam-group window
+// are beamed together, but a rest or longer note breaks the run.
+function computeAutoBeams(laid, bar) {
+  const ts     = bar.timeSignature;
+  const divVal = 4 / ts.division;  // crotchet value of one division note
+
+  // Build beam-group beat windows
+  let pos = 0;
+  const windows = bar.beamGrouping.map(size => {
+    const w = { start: pos, end: pos + size * divVal };
+    pos += size * divVal;
+    return w;
+  });
+
+  const beamGroups = {};
+  const beamedIds  = new Set();
+  let counter = 0;
+
+  for (const win of windows) {
+    const inWin = laid.filter(({ beat: b }) => b >= win.start && b < win.end);
+    let run = [];
+    for (const { n, x } of inWin) {
+      const beamable = n.type !== 'rest' &&
+        (n.duration.base === 'quaver' || n.duration.base === 'semiquaver' || n.duration.base === 'demisemiquaver');
+      if (beamable) {
+        run.push({ n, x });
+      } else {
+        // Crotchet, minim, rest, etc. — break the current run
+        if (run.length >= 2) {
+          const gid = `_bg${counter++}`;
+          beamGroups[gid] = run;
+          run.forEach(({ n: m }) => beamedIds.add(m.id));
+        }
+        run = [];
+      }
+    }
+    if (run.length >= 2) {
+      const gid = `_bg${counter++}`;
+      beamGroups[gid] = run;
+      run.forEach(({ n: m }) => beamedIds.add(m.id));
+    }
+  }
+
+  return { beamGroups, beamedIds };
 }
 
 // Compute the SVG height needed for a bar based on octaveShift range of its notes.
