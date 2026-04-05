@@ -18,7 +18,7 @@ A music notation PWA. The core concept is **scale degree notation** - instead of
 
 The v0.2 JSON schema is in `notation-schema.json` at the repo root. Key points:
 - `document` → `bars[]` → `notes[]` — hierarchical structure
-- `note.degree` is canonical (1–8); never changes on transposition
+- `note.degree` is canonical (1–7); never changes on transposition
 - `note.octaveShift` drives vertical position: -1 below staff, 0 within, 1 above
 - `note.midi.pitch` is for reference only — unused in rendering
 - `chordSymbol` is a structured object, never a raw string
@@ -52,3 +52,17 @@ Notation style is based on hand-sketched examples (pink marker on white/dark bac
 ## After Renderer Works
 
 Enable GitHub Pages on the repo so the proof of concept is viewable in a browser at the GitHub Pages URL.
+
+## Degree Numbering and Multi-Octave Staff — Decided
+
+**Note numbers are always 1–7.** Never compound numbers (8, 9, 10…) and never negative. The octave register is communicated entirely by vertical position relative to the reference lines.
+
+**The staff adapts to the content of the music:**
+- The baseline is two dashed reference lines: degree 1 (lower) and degree 8/1 (upper), spanning one octave.
+- Space is added above and/or below these lines as needed to accommodate notes at octaveShift ±1 without crowding.
+- If the musical content spans into a second octave (i.e. any note has octaveShift 1 or -1), a **third tonic reference line** is drawn at the appropriate edge — one full SPAN above the upper line (for high notes) or one full SPAN below the lower line (for low notes). This third line gives the eye a visual anchor at the octave boundary, the same way the original two lines do.
+
+**Rationale:** Keeping numbers at 1–7 maximises reading speed — musicians already know their degrees. A hook that climbs from degree 5 up through the octave to degree 5 above reads as "5 6 7 1 2 3 4 5", which is instantly singable and transposable. The third reference line prevents the upper (or lower) region from feeling unanchored.
+
+**Implication for the renderer:** Before drawing a bar, scan its notes for the octaveShift range. If any note has octaveShift ≥ 1, extend the SVG height upward and draw the third line at UPPER_Y − SPAN. If any note has octaveShift ≤ −1, extend downward and draw the line at LOWER_Y + SPAN. Chord symbols and stems adjust accordingly.
+
