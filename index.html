@@ -647,6 +647,31 @@ function stemDir(note) {
   return eff >= 4.5 ? 1 : -1;
 }
 
+// ── VexFlow/Bravura glyph rest paths ─────────────────────────────────────
+// Source: Bravura SMuFL font (via VexFlow). VF coords: y increases upward.
+// 'm'→M, 'l'→L, 'b'→C (cubic bezier with 6 coords), 'z'→Z.
+const GLYPH_REST8  = 'm 193 154 b 96 251 193 207 150 251 b 0 154 43 251 0 207 b 39 81 0 124 17 98 b 117 56 62 65 89 56 b 173 66 137 56 157 60 b 225 88 193 72 206 78 b 232 89 228 89 230 89 b 239 76 238 89 239 84 b 238 60 239 72 239 66 b 104 -343 233 39 130 -248 b 145 -361 104 -360 137 -361 b 196 -347 161 -361 181 -359 b 341 161 200 -344 341 161 b 356 217 347 187 354 210 b 338 240 356 232 341 239 b 323 235 336 240 331 240 b 193 140 312 226 240 140 z';
+const GLYPH_REST16 = 'm 300 160 b 202 258 300 215 256 258 b 104 160 148 258 104 215 b 219 62 104 101 164 62 b 331 94 258 62 298 75 b 341 96 336 95 338 96 b 348 86 346 96 348 94 b 265 -173 348 63 275 -151 b 194 -217 253 -200 215 -217 b 196 -203 196 -212 196 -207 b 98 -105 196 -148 151 -105 b 0 -203 43 -105 0 -148 b 115 -301 0 -262 60 -301 b 223 -271 153 -301 190 -288 b 229 -279 226 -271 229 -274 l 228 -281 b 228 -282 228 -282 228 -282 l 91 -690 b 91 -691 91 -690 91 -691 l 89 -693 b 134 -720 89 -706 102 -720 b 189 -687 176 -720 183 -703 l 356 -138 b 420 81 393 -16 420 81 b 459 226 420 81 456 207 b 461 232 459 229 461 230 b 446 248 461 240 449 246 b 431 242 439 248 435 245 b 300 145 420 233 348 147 z';
+
+// Convert a VF glyph path to an SVG d-string.
+// ox/oy: SVG origin (where glyph 0,0 maps to). scale: SVG px per glyph unit.
+// VF y increases upward → multiply glyph y by –1 to get SVG y.
+function vfGlyph(path, ox, oy, scale) {
+  const t = path.trim().split(/\s+/);
+  const out = []; let i = 0;
+  while (i < t.length) {
+    const cmd = t[i++];
+    if (cmd === 'm' || cmd === 'l') {
+      out.push(`${cmd.toUpperCase()} ${(+t[i++]*scale+ox).toFixed(2)} ${(-t[i++]*scale+oy).toFixed(2)}`);
+    } else if (cmd === 'b') {
+      const c = [];
+      for (let j = 0; j < 6; j++) { const v = +t[i++]*scale; c.push((j%2===0 ? v+ox : -v+oy).toFixed(2)); }
+      out.push(`C ${c.join(' ')}`);
+    } else if (cmd === 'z') { out.push('Z'); }
+  }
+  return out.join(' ');
+}
+
 // ── Rest symbols ──────────────────────────────────────────────────────────
 
 function drawRest(svg, x, base, upperY, lowerY) {
@@ -668,12 +693,20 @@ function drawRest(svg, x, base, upperY, lowerY) {
     const top = midY - 12;
     const d = `M ${x} ${top} l 5 6 l -8 5 l 8 4 l -5 6 l 6 -2`;
     svg.appendChild(el('path', { d, fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
-  } else if (base === 'quaver') {
-    // Filled oval + flag-like tail
-    svg.appendChild(el('ellipse', { cx: x, cy: midY, rx: 5, ry: 4, fill: 'var(--fg)', transform: `rotate(-20,${x},${midY})` }));
-    svg.appendChild(el('line', { x1: x+4, y1: midY, x2: x+4, y2: midY - 20, stroke: 'var(--fg)', 'stroke-width': 1.5 }));
-    const d = `M ${x+4} ${midY-20} C ${x+18} ${midY-14} ${x+12} ${midY-6} ${x+4} ${midY-4}`;
-    svg.appendChild(el('path', { d, fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.5 }));
+  } else if (base === 'quaver' || base === 'semiquaver') {
+    // Proper Bravura rest glyphs.
+    // Scale so the rest body fills roughly the staff span.
+    // Origin chosen so the filled circle sits just below the upper reference line.
+    const sc  = (lowerY - upperY) * 0.0015;  // ≈ 0.114 for default SPAN=76
+    if (base === 'quaver') {
+      // Circle centre ≈ glyph (121, 202). Place at (x, upperY + 0.25·SPAN).
+      const oy = (upperY + 0.25 * (lowerY - upperY)) + 202 * sc;
+      svg.appendChild(el('path', { d: vfGlyph(GLYPH_REST8,  x - 121 * sc, oy, sc), fill: 'var(--fg)' }));
+    } else {
+      // Upper circle centre ≈ glyph (202, 209). Place at (x, upperY + 0.25·SPAN).
+      const oy = (upperY + 0.25 * (lowerY - upperY)) + 209 * sc;
+      svg.appendChild(el('path', { d: vfGlyph(GLYPH_REST16, x - 202 * sc, oy, sc), fill: 'var(--fg)' }));
+    }
   } else {
     // fallback dash
     svg.appendChild(el('line', { x1: x-8, y1: midY, x2: x+8, y2: midY, stroke: 'var(--fg)', 'stroke-width': 2 }));
@@ -786,57 +819,91 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   for (const members of Object.values(beamGroups)) {
     if (members.length < 2) continue;
     const dir = stemDir(members[0].n);
+    const bh  = 4.5;  // beam half-thickness
+    const sw  = 0.8;  // half of stem stroke-width — beam overlaps stem outer edges
 
+    // Natural stem attach-points and tips
     const memberData = members.map(({ n, x }) => {
-      const ny = nY(n.degree, n.octaveShift ?? 0);
+      const ny     = nY(n.degree, n.octaveShift ?? 0);
       const attach = stemAttach(x, ny, dir);
-      const tip = stemTipPt(attach, dir);
+      const tip    = stemTipPt(attach, dir);
       return { n, attach, tip };
     });
 
-    // Stems
-    memberData.forEach(({ attach, tip }) => {
+    const first = memberData[0], last = memberData[memberData.length - 1];
+    const dx    = last.tip.x - first.tip.x;
+
+    // ── Cap beam slope ──────────────────────────────────────────────────
+    // Limit |dy/dx| to MAX_SLOPE to prevent extreme angles and notehead collisions.
+    // The first tip is fixed; the last tip is moved inward if needed.
+    const MAX_SLOPE = 0.3;
+    let beamY0 = first.tip.y;
+    let beamY1 = last.tip.y;
+    if (dx > 0) {
+      const dy = last.tip.y - first.tip.y;
+      if (Math.abs(dy) > MAX_SLOPE * dx) beamY1 = beamY0 + Math.sign(dy) * MAX_SLOPE * dx;
+    }
+
+    // Beam line Y at arbitrary X — linear interpolation between the two endpoints
+    const beamAtX = x => dx > 0 ? beamY0 + (beamY1 - beamY0) * (x - first.tip.x) / dx : beamY0;
+
+    // ── Adjust stem tips to the beam line ──────────────────────────────
+    // Every stem tip is moved to exactly meet the beam. A minimum stem length
+    // guard ensures the beam cannot collapse onto the notehead.
+    const MIN_STEM = 24;
+    const adjTips = memberData.map(({ attach, tip }) => {
+      let y = beamAtX(tip.x);
+      if (dir === -1 && y > attach.y - MIN_STEM) y = attach.y - MIN_STEM;
+      if (dir ===  1 && y < attach.y + MIN_STEM) y = attach.y + MIN_STEM;
+      return { x: tip.x, y };
+    });
+
+    // Draw stems with adjusted tips
+    memberData.forEach(({ attach }, mi) => {
       svg.appendChild(el('line', {
-        x1: attach.x, y1: attach.y, x2: tip.x, y2: tip.y,
+        x1: attach.x, y1: attach.y, x2: adjTips[mi].x, y2: adjTips[mi].y,
         stroke: 'var(--fg)', 'stroke-width': 1.6, 'stroke-linecap': 'round'
       }));
     });
 
-    // Beam bar — drawn as a filled parallelogram so end caps are vertical,
-    // precisely flush with each stem rather than angled perpendicular to the beam slope
-    const first = memberData[0], last = memberData[memberData.length - 1];
-    const bh = 4.5;  // half-thickness of beam
-    const sw = 0.8;  // half of stem stroke-width — beam overlaps stem outer edges
-    const bd = `M ${first.tip.x - sw} ${first.tip.y - bh} L ${last.tip.x + sw} ${last.tip.y - bh} L ${last.tip.x + sw} ${last.tip.y + bh} L ${first.tip.x - sw} ${first.tip.y + bh} Z`;
-    svg.appendChild(el('path', { d: bd, fill: 'var(--beam)' }));
+    // Primary beam parallelogram — vertical end caps flush with outer stem edges
+    const fa = adjTips[0], la = adjTips[adjTips.length - 1];
+    svg.appendChild(el('path', {
+      d: `M ${fa.x-sw} ${fa.y-bh} L ${la.x+sw} ${la.y-bh} L ${la.x+sw} ${la.y+bh} L ${fa.x-sw} ${fa.y+bh} Z`,
+      fill: 'var(--beam)',
+    }));
 
-    // Secondary beams: full beam between consecutive semiquavers; stub where a semiquaver meets a quaver
-    const beamGap = bh * 2 + 2;   // distance between primary and secondary beam centres
-    const stubW   = 14;            // stub half-width for an isolated semiquaver
+    // ── Secondary beams ─────────────────────────────────────────────────
+    // All secondary beams are parallelograms at the same slope as the primary beam.
+    // Full span between consecutive semiquavers; slope-matching stub for isolated ones.
+    const beamGap = bh * 2 + 2;       // distance between primary and secondary centres
+    const stubW   = 14;                // stub width for an isolated semiquaver
+    const secAtX  = x => beamAtX(x) - dir * beamGap;
+
     let si = 0;
     while (si < memberData.length) {
       if (memberData[si].n.duration.base !== 'semiquaver') { si++; continue; }
-      // Find end of consecutive semiquaver run
       let ei = si;
       while (ei + 1 < memberData.length && memberData[ei + 1].n.duration.base === 'semiquaver') ei++;
+
       if (ei > si) {
-        // Full secondary beam spanning the run — same slope as primary
-        const t0 = memberData[si].tip, t1 = memberData[ei].tip;
-        const sy0 = t0.y - dir * beamGap, sy1 = t1.y - dir * beamGap;
+        // Full secondary beam spanning the consecutive semiquaver run
+        const x0 = adjTips[si].x, x1 = adjTips[ei].x;
+        const sy0 = secAtX(x0),   sy1 = secAtX(x1);
         svg.appendChild(el('path', {
-          d: `M ${t0.x - sw} ${sy0 - bh} L ${t1.x + sw} ${sy1 - bh} L ${t1.x + sw} ${sy1 + bh} L ${t0.x - sw} ${sy0 + bh} Z`,
+          d: `M ${x0-sw} ${sy0-bh} L ${x1+sw} ${sy1-bh} L ${x1+sw} ${sy1+bh} L ${x0-sw} ${sy0+bh} Z`,
           fill: 'var(--beam)',
         }));
         si = ei + 1;
       } else {
-        // Isolated semiquaver — stub extends toward group centre
-        const tip = memberData[si].tip;
-        const secY = tip.y - dir * beamGap;
+        // Isolated semiquaver: stub parallelogram at primary slope, toward group centre
+        const tipX  = adjTips[si].x;
         const atEnd = si === memberData.length - 1 && si > 0;
-        const x1 = atEnd ? tip.x - stubW - sw : tip.x - sw;
-        const x2 = atEnd ? tip.x + sw         : tip.x + stubW + sw;
+        const x0 = atEnd ? tipX - stubW : tipX;
+        const x1 = atEnd ? tipX        : tipX + stubW;
+        const sy0 = secAtX(x0), sy1 = secAtX(x1);
         svg.appendChild(el('path', {
-          d: `M ${x1} ${secY - bh} L ${x2} ${secY - bh} L ${x2} ${secY + bh} L ${x1} ${secY + bh} Z`,
+          d: `M ${x0-sw} ${sy0-bh} L ${x1+sw} ${sy1-bh} L ${x1+sw} ${sy1+bh} L ${x0-sw} ${sy0+bh} Z`,
           fill: 'var(--beam)',
         }));
         si++;
