@@ -187,6 +187,13 @@
 
 <div class="controls">
   <div class="ctrl-group">
+    <label for="songSelect">Song</label>
+    <select id="songSelect">
+      <option value="praise">Praise The Lord Forever</option>
+      <option value="waymaker">Way Maker</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
     <label for="keySelect">Key</label>
     <select id="keySelect">
       <option value="C">C</option>
@@ -229,12 +236,19 @@
 // DATA
 // ═══════════════════════════════════════════════════════════════════════════
 
-const NOTE = (id, degree, base, dots, stem, beamType, beamGroup, tieType, tieGroup) => ({
-  id, type: 'note', degree, accidental: null, octaveShift: 0,
+const NOTE = (id, degree, base, dots, stem, beamType, beamGroup, tieType, tieGroup, octaveShift = 0) => ({
+  id, type: 'note', degree, accidental: null, octaveShift,
   duration: { base, dots: dots ?? 0, tuplet: null },
   tie: { type: tieType ?? null, groupId: tieGroup ?? null },
   beam: { type: beamType ?? null, groupId: beamGroup ?? null },
   stem: stem ?? 'auto', midi: null,
+});
+
+const REST = (id, base, dots) => ({
+  id, type: 'rest',
+  duration: { base, dots: dots ?? 0, tuplet: null },
+  tie: { type: null, groupId: null },
+  beam: { type: null, groupId: null },
 });
 
 const CHORD = (degree, quality, beatOffset, accidental) => ({
@@ -242,67 +256,143 @@ const CHORD = (degree, quality, beatOffset, accidental) => ({
   extensions: [], bass: null, position: 'below', beatOffset,
 });
 
-const BAR = (id, idx, notes, chords) => ({
+const BAR = (id, idx, notes, chords, opts = {}) => ({
   id, index: idx,
   timeSignature: { beats: 4, division: 4 },
   beamGrouping: [2, 2],
   chordSymbols: chords ?? [],
   notes,
+  pickup: opts.pickup ?? false,
+  pickupBeats: opts.pickupBeats ?? null,
   displayOptions: { showReferenceLines: true, referenceLineStyle: 'dashed', size: 1.0 },
 });
 
-const DOC = {
-  title: 'Praise The Lord Forever',
-  key: 'G',
-  keyMode: 'major',
-  defaultTimeSignature: { beats: 4, division: 4 },
-  bars: [
-    // Bar 1: minim 6, minim 3 — chord 4
-    BAR('bar-001', 0, [
-      NOTE('n-101', 6, 'minim', 0, 'down'),
-      NOTE('n-102', 3, 'minim', 0, 'up'),
-    ], [CHORD(4, 'major', 0)]),
+const SONGS = {
+  praise: {
+    title: 'Praise The Lord Forever',
+    key: 'G',
+    keyMode: 'major',
+    defaultTimeSignature: { beats: 4, division: 4 },
+    bars: [
+      // Bar 1: minim 6, minim 3 — chord 4
+      BAR('bar-001', 0, [
+        NOTE('n-101', 6, 'minim', 0, 'down'),
+        NOTE('n-102', 3, 'minim', 0, 'up'),
+      ], [CHORD(4, 'major', 0)]),
 
-    // Bar 2: whole 2 — chord 5
-    BAR('bar-002', 1, [
-      NOTE('n-201', 2, 'whole'),
-    ], [CHORD(5, 'major', 0)]),
+      // Bar 2: whole 2 — chord 5
+      BAR('bar-002', 1, [
+        NOTE('n-201', 2, 'whole'),
+      ], [CHORD(5, 'major', 0)]),
 
-    // Bar 3: minim 5, minim 2 — chord 3m
-    BAR('bar-003', 2, [
-      NOTE('n-301', 5, 'minim', 0, 'down'),
-      NOTE('n-302', 2, 'minim', 0, 'up'),
-    ], [CHORD(3, 'minor', 0)]),
+      // Bar 3: minim 5, minim 2 — chord 3m
+      BAR('bar-003', 2, [
+        NOTE('n-301', 5, 'minim', 0, 'down'),
+        NOTE('n-302', 2, 'minim', 0, 'up'),
+      ], [CHORD(3, 'minor', 0)]),
 
-    // Bar 4: whole 1 — chord 6m (wait - degree 6m... actually it's 6m)
-    BAR('bar-004', 3, [
-      NOTE('n-401', 1, 'whole'),
-    ], [CHORD(6, 'minor', 0)]),
+      // Bar 4: whole 1 — chord 6m
+      BAR('bar-004', 3, [
+        NOTE('n-401', 1, 'whole'),
+      ], [CHORD(6, 'minor', 0)]),
 
-    // Bar 5: minim 6, minim 3 — chord 4
-    BAR('bar-005', 4, [
-      NOTE('n-501', 6, 'minim', 0, 'down'),
-      NOTE('n-502', 3, 'minim', 0, 'up'),
-    ], [CHORD(4, 'major', 0)]),
+      // Bar 5: minim 6, minim 3 — chord 4
+      BAR('bar-005', 4, [
+        NOTE('n-501', 6, 'minim', 0, 'down'),
+        NOTE('n-502', 3, 'minim', 0, 'up'),
+      ], [CHORD(4, 'major', 0)]),
 
-    // Bar 6: dotted crotchet 2 | quaver 1 + quaver 2 (beamed) | dotted crotchet 1 (tie start) — chord 5
-    BAR('bar-006', 5, [
-      NOTE('n-601', 2, 'crotchet', 1, 'up'),
-      NOTE('n-602', 1, 'quaver',   0, 'up'),
-      NOTE('n-603', 2, 'quaver',   0, 'up'),
-      NOTE('n-604', 1, 'crotchet', 1, 'up', null, null, 'start', 'tie-x'),
-    ], [CHORD(5, 'major', 0)]),
+      // Bar 6: dotted crotchet 2 | quaver 1 + quaver 2 (beamed) | dotted crotchet 1 (tie start) — chord 5
+      BAR('bar-006', 5, [
+        NOTE('n-601', 2, 'crotchet', 1, 'up'),
+        NOTE('n-602', 1, 'quaver',   0, 'up'),
+        NOTE('n-603', 2, 'quaver',   0, 'up'),
+        NOTE('n-604', 1, 'crotchet', 1, 'up', null, null, 'start', 'tie-x'),
+      ], [CHORD(5, 'major', 0)]),
 
-    // Bar 7: whole 1 (tie continue — end of bar 6 tie, start of bar 8 tie) — chord 1
-    BAR('bar-007', 6, [
-      NOTE('n-701', 1, 'whole', 0, null, null, null, 'continue', 'tie-x'),
-    ], [CHORD(1, 'major', 0)]),
+      // Bar 7: whole 1 (tie continue — end of bar 6 tie, start of bar 8 tie) — chord 1
+      BAR('bar-007', 6, [
+        NOTE('n-701', 1, 'whole', 0, null, null, null, 'continue', 'tie-x'),
+      ], [CHORD(1, 'major', 0)]),
 
-    // Bar 8: whole 1 (tie end — tied from bar 7)
-    BAR('bar-008', 7, [
-      NOTE('n-801', 1, 'whole', 0, null, null, null, 'end', 'tie-x'),
-    ], []),
-  ]
+      // Bar 8: whole 1 (tie end — tied from bar 7)
+      BAR('bar-008', 7, [
+        NOTE('n-801', 1, 'whole', 0, null, null, null, 'end', 'tie-x'),
+      ], []),
+    ]
+  },
+
+  waymaker: {
+    title: 'Way Maker',
+    key: 'A',
+    keyMode: 'major',
+    defaultTimeSignature: { beats: 4, division: 4 },
+    bars: [
+      // Pickup bar: 3 quavers (1.5 beats), right-aligned at beat 2.5
+      // deg3 quaver, deg5 quaver, deg6 quaver [tie-start wm-ta]
+      BAR('wm-p', 0, [
+        NOTE('wmp-1', 3, 'quaver', 0, 'up'),
+        NOTE('wmp-2', 5, 'quaver', 0, 'up'),
+        NOTE('wmp-3', 6, 'quaver', 0, 'up', null, null, 'start', 'wm-ta'),
+      ], [], { pickup: true, pickupBeats: 1.5 }),
+
+      // Bar 1 (elapsed 0–4):
+      // beat 0: deg6 minim [tie-end wm-ta]                    2.0 beats
+      // beat 2: deg6 quaver [beam b1g3 start]                 0.5 beats
+      // beat 2.5: deg6 semiquaver [beam b1g3 end]             0.25 beats
+      // beat 2.75: deg6 quaver (unbeamed, crosses beat)       0.5 beats
+      // beat 3.25: deg5 quaver [beam b1g4 start]              0.5 beats
+      // beat 3.75: deg3 semiquaver [beam b1g4 end, tie-start wm-tb] 0.25 beats
+      BAR('wm-1', 1, [
+        NOTE('wm1-1', 6, 'minim',      0, 'down', null,    null,   'end',   'wm-ta'),
+        NOTE('wm1-2', 6, 'quaver',     0, 'up',   'start', 'b1g3'),
+        NOTE('wm1-3', 6, 'semiquaver', 0, 'up',   'end',   'b1g3'),
+        NOTE('wm1-4', 6, 'quaver',     0, 'up'),
+        NOTE('wm1-5', 5, 'quaver',     0, 'up',   'start', 'b1g4'),
+        NOTE('wm1-6', 3, 'semiquaver', 0, 'up',   'end',   'b1g4', 'start', 'wm-tb'),
+      ], []),
+
+      // Bar 2 (elapsed 0–4):
+      // beat 0: deg3 minim [tie-end wm-tb]                   2.0 beats
+      // beat 2: quaver rest                                   0.5 beats
+      // beat 2.5: deg1 semiquaver                            0.25 beats
+      // beat 2.75: deg5 dotted quaver                        0.75 beats
+      // beat 3.5: deg1 semiquaver [beam b2g4 start]          0.25 beats
+      // beat 3.75: deg2 semiquaver [beam b2g4 end, tie-start wm-tc] 0.25 beats
+      BAR('wm-2', 2, [
+        NOTE('wm2-1', 3, 'minim',      0, 'up',   null,    null,   'end',   'wm-tb'),
+        REST('wm2-r1', 'quaver', 0),
+        NOTE('wm2-2', 1, 'semiquaver', 0, 'up'),
+        NOTE('wm2-3', 5, 'quaver',     1, 'up'),
+        NOTE('wm2-4', 1, 'semiquaver', 0, 'up',   'start', 'b2g4'),
+        NOTE('wm2-5', 2, 'semiquaver', 0, 'up',   'end',   'b2g4', 'start', 'wm-tc'),
+      ], []),
+
+      // Bar 3 (elapsed 0–4):
+      // beat 0: deg2 minim [tie-end wm-tc]                   2.0 beats
+      // beat 2: quaver rest                                   0.5 beats
+      // beat 2.5: deg1 semiquaver                            0.25 beats
+      // beat 2.75: deg3 dotted quaver                        0.75 beats
+      // beat 3.5: deg1 semiquaver [beam b3g4 start]          0.25 beats
+      // beat 3.75: deg6 semiquaver oct-1 [beam b3g4 end, tie-start wm-td] 0.25 beats
+      BAR('wm-3', 3, [
+        NOTE('wm3-1', 2, 'minim',      0, 'up',   null,    null,   'end',   'wm-tc'),
+        REST('wm3-r1', 'quaver', 0),
+        NOTE('wm3-2', 1, 'semiquaver', 0, 'up'),
+        NOTE('wm3-3', 3, 'quaver',     1, 'up'),
+        NOTE('wm3-4', 1, 'semiquaver', 0, 'up',   'start', 'b3g4'),
+        NOTE('wm3-5', 6, 'semiquaver', 0, 'up',   'end',   'b3g4', 'start', 'wm-td', -1),
+      ], []),
+
+      // Bar 4 (elapsed 0–4):
+      // beat 0: deg6 minim oct-1 [tie-end wm-td]             2.0 beats
+      // beat 2: minim rest                                    2.0 beats
+      BAR('wm-4', 4, [
+        NOTE('wm4-1', 6, 'minim', 0, 'down', null, null, 'end', 'wm-td', -1),
+        REST('wm4-r1', 'minim', 0),
+      ], []),
+    ]
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -486,8 +576,8 @@ const BEAT_VAL = {
 // Every note sits at the x corresponding to its beat position — no centering.
 // Two quavers therefore occupy the same horizontal span as one crotchet.
 // areaLeft and areaWidth are passed in so chord symbols use the identical formula.
-function layoutNotes(notes, ts, areaLeft, areaWidth) {
-  let beat = 0;
+function layoutNotes(notes, ts, areaLeft, areaWidth, startBeat = 0) {
+  let beat = startBeat;
   return notes.map(n => {
     const dur = BEAT_VAL[n.duration.base] * (n.duration.dots === 1 ? 1.5 : n.duration.dots === 2 ? 1.75 : 1);
     const x = areaLeft + (beat / ts.beats) * areaWidth;
@@ -563,18 +653,18 @@ function stemDir(note) {
 
 // ── Rest symbols ──────────────────────────────────────────────────────────
 
-function drawRest(svg, x, base) {
-  const midY = (L.UPPER_Y + L.LOWER_Y) / 2;
+function drawRest(svg, x, base, upperY, lowerY) {
+  const midY = (upperY + lowerY) / 2;
   if (base === 'whole') {
     // Filled rectangle hanging from upper line
     svg.appendChild(el('rect', {
-      x: x - 10, y: L.UPPER_Y, width: 20, height: 8,
+      x: x - 10, y: upperY, width: 20, height: 8,
       fill: 'var(--fg)', rx: 1
     }));
   } else if (base === 'minim') {
     // Open rectangle sitting on lower line
     svg.appendChild(el('rect', {
-      x: x - 10, y: L.LOWER_Y - 8, width: 20, height: 8,
+      x: x - 10, y: lowerY - 8, width: 20, height: 8,
       fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.6, rx: 1
     }));
   } else if (base === 'crotchet') {
@@ -611,7 +701,8 @@ function drawTieArc(svg, sx, ex, arcY) {
 
 // ── Main render function ──────────────────────────────────────────────────
 
-function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false, suppressTieStarts = new Set(), suppressTieEnds = new Set()) {
+function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false,
+                   suppressTieStarts = new Set(), suppressTieEnds = new Set(), rowHeight = L.H) {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -619,40 +710,79 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   const NOTE_AREA_LEFT  = noteStart + 22;
   const NOTE_AREA_RIGHT = L.RIGHT - 18;
   const NOTE_AREA_W     = NOTE_AREA_RIGHT - NOTE_AREA_LEFT;
-  const svg = el('svg', { viewBox: `0 0 ${L.W} ${L.H}`, xmlns: NS });
+
+  // ── Dynamic y-coords based on octaveShift range ────────────────────────
+  const hasLowNotes  = bar.notes.some(n => n.type !== 'rest' && (n.octaveShift ?? 0) <= -1);
+  const hasHighNotes = bar.notes.some(n => n.type !== 'rest' && (n.octaveShift ?? 0) >= 1);
+  const SHIFT = hasHighNotes ? SPAN : 0;
+  const lUPPER_Y = L.UPPER_Y + SHIFT;
+  const lLOWER_Y = L.LOWER_Y + SHIFT;
+  const lCHORD_Y = L.CHORD_Y + SHIFT + (hasLowNotes ? SPAN : 0);
+  const thirdTop = hasHighNotes ? lUPPER_Y - SPAN : null;   // = L.UPPER_Y when SHIFT=SPAN
+  const thirdBot = hasLowNotes  ? lLOWER_Y + SPAN : null;
+  const barTop   = (thirdTop ?? lUPPER_Y) - 12;
+  const barBot   = (thirdBot ?? lLOWER_Y) + 12;
+
+  // Local noteY includes SHIFT
+  const nY = (degree, octaveShift) => noteY(degree, octaveShift) + SHIFT;
+
+  const svg = el('svg', { viewBox: `0 0 ${L.W} ${rowHeight}`, xmlns: NS });
 
   // ── Reference lines — full SVG width so adjacent bars are seamless ────
   const dash = '10 7';
-  svg.appendChild(el('line', { x1: 0, y1: L.UPPER_Y, x2: L.W, y2: L.UPPER_Y, stroke: 'var(--staff-line)', 'stroke-width': 1.4, 'stroke-dasharray': dash }));
-  svg.appendChild(el('line', { x1: 0, y1: L.LOWER_Y, x2: L.W, y2: L.LOWER_Y, stroke: 'var(--staff-line)', 'stroke-width': 1.4, 'stroke-dasharray': dash }));
+  svg.appendChild(el('line', { x1: 0, y1: lUPPER_Y, x2: L.W, y2: lUPPER_Y, stroke: 'var(--staff-line)', 'stroke-width': 1.4, 'stroke-dasharray': dash }));
+  svg.appendChild(el('line', { x1: 0, y1: lLOWER_Y, x2: L.W, y2: lLOWER_Y, stroke: 'var(--staff-line)', 'stroke-width': 1.4, 'stroke-dasharray': dash }));
+  if (thirdTop !== null) {
+    svg.appendChild(el('line', { x1: 0, y1: thirdTop, x2: L.W, y2: thirdTop, stroke: 'var(--staff-line)', 'stroke-width': 1.4, 'stroke-dasharray': dash }));
+  }
+  if (thirdBot !== null) {
+    svg.appendChild(el('line', { x1: 0, y1: thirdBot, x2: L.W, y2: thirdBot, stroke: 'var(--staff-line)', 'stroke-width': 1.4, 'stroke-dasharray': dash }));
+  }
 
   // Reference line labels (first bar only, tucked just inside the left barline)
   if (showTS) {
-    svg.appendChild(el('text', { x: 9, y: L.UPPER_Y - 5, fill: 'var(--label)', 'font-size': '9', 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif' }, '8'));
-    svg.appendChild(el('text', { x: 9, y: L.LOWER_Y + 13, fill: 'var(--label)', 'font-size': '9', 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif' }, '1'));
+    svg.appendChild(el('text', { x: 9, y: lUPPER_Y - 5, fill: 'var(--label)', 'font-size': '9', 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif' }, '8'));
+    svg.appendChild(el('text', { x: 9, y: lLOWER_Y + 13, fill: 'var(--label)', 'font-size': '9', 'text-anchor': 'middle', 'font-family': 'system-ui, sans-serif' }, '1'));
   }
 
   // ── Barlines ───────────────────────────────────────────────────────────
   // Left barline on every bar (at SVG left edge → seamless with preceding bar's right edge)
-  svg.appendChild(el('line', { x1: L.LEFT, y1: L.UPPER_Y - 12, x2: L.LEFT, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
+  svg.appendChild(el('line', { x1: L.LEFT, y1: barTop, x2: L.LEFT, y2: barBot, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
   // Right barline at the end of every system row; double barline on final bar
   if (isRowEnd) {
-    svg.appendChild(el('line', { x1: L.RIGHT,     y1: L.UPPER_Y - 12, x2: L.RIGHT,     y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
+    svg.appendChild(el('line', { x1: L.RIGHT,     y1: barTop, x2: L.RIGHT,     y2: barBot, stroke: 'var(--fg)', 'stroke-width': 1.8 }));
     if (isLast) {
-      svg.appendChild(el('line', { x1: L.RIGHT + 9, y1: L.UPPER_Y - 12, x2: L.RIGHT + 9, y2: L.LOWER_Y + 12, stroke: 'var(--fg)', 'stroke-width': 6 }));
+      svg.appendChild(el('line', { x1: L.RIGHT + 9, y1: barTop, x2: L.RIGHT + 9, y2: barBot, stroke: 'var(--fg)', 'stroke-width': 6 }));
     }
   }
 
   // ── Time signature (first bar or time-sig change only) ────────────────
   if (showTS) {
-    const tsFontSize = Math.round(SPAN / 2 / 0.68);
-    const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'EB Garamond',serif;text-anchor:middle;dominant-baseline:central;`;
-    svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.25, style: tsStyle }, String(ts.beats)));
-    svg.appendChild(el('text', { x: L.TS_X, y: L.UPPER_Y + SPAN * 0.75, style: tsStyle }, String(ts.division)));
+    if (thirdBot !== null) {
+      // Three-line staff (low notes): fill from topmost to bottommost
+      const tsFontSize = Math.round(SPAN / 0.68);
+      const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'EB Garamond',serif;text-anchor:middle;dominant-baseline:central;`;
+      svg.appendChild(el('text', { x: L.TS_X, y: (lUPPER_Y + lLOWER_Y) / 2, style: tsStyle }, String(ts.beats)));
+      svg.appendChild(el('text', { x: L.TS_X, y: (lLOWER_Y + thirdBot) / 2, style: tsStyle }, String(ts.division)));
+    } else if (thirdTop !== null) {
+      // Three-line staff (high notes)
+      const tsFontSize = Math.round(SPAN / 0.68);
+      const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'EB Garamond',serif;text-anchor:middle;dominant-baseline:central;`;
+      svg.appendChild(el('text', { x: L.TS_X, y: (thirdTop + lUPPER_Y) / 2, style: tsStyle }, String(ts.beats)));
+      svg.appendChild(el('text', { x: L.TS_X, y: (lUPPER_Y + lLOWER_Y) / 2, style: tsStyle }, String(ts.division)));
+    } else {
+      // Standard two-line staff
+      const tsFontSize = Math.round(SPAN / 2 / 0.68);
+      const tsStyle = `fill:var(--fg);font-size:${tsFontSize}px;font-weight:700;font-family:'EB Garamond',serif;text-anchor:middle;dominant-baseline:central;`;
+      svg.appendChild(el('text', { x: L.TS_X, y: lUPPER_Y + SPAN * 0.25, style: tsStyle }, String(ts.beats)));
+      svg.appendChild(el('text', { x: L.TS_X, y: lUPPER_Y + SPAN * 0.75, style: tsStyle }, String(ts.division)));
+    }
   }
 
   // ── Layout notes ───────────────────────────────────────────────────────
-  const laid = layoutNotes(bar.notes, ts, NOTE_AREA_LEFT, NOTE_AREA_W);
+  const startBeat = (bar.pickup && bar.pickupBeats != null)
+    ? ts.beats - bar.pickupBeats : 0;
+  const laid = layoutNotes(bar.notes, ts, NOTE_AREA_LEFT, NOTE_AREA_W, startBeat);
 
   // ── Beams (drawn first, behind noteheads) ──────────────────────────────
   const beamGroups = {};
@@ -667,10 +797,10 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const dir = stemDir(members[0].n);
 
     const memberData = members.map(({ n, x }) => {
-      const ny = noteY(n.degree, n.octaveShift);
+      const ny = nY(n.degree, n.octaveShift ?? 0);
       const attach = stemAttach(x, ny, dir);
       const tip = stemTipPt(attach, dir);
-      return { attach, tip };
+      return { n, attach, tip };
     });
 
     // Stems
@@ -688,16 +818,33 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const sw = 0.8;  // half of stem stroke-width — beam overlaps stem outer edges
     const bd = `M ${first.tip.x - sw} ${first.tip.y - bh} L ${last.tip.x + sw} ${last.tip.y - bh} L ${last.tip.x + sw} ${last.tip.y + bh} L ${first.tip.x - sw} ${first.tip.y + bh} Z`;
     svg.appendChild(el('path', { d: bd, fill: 'var(--beam)' }));
+
+    // Secondary beams for semiquaver members
+    const beamGap = bh * 2 + 2;   // distance between beam centres
+    const stubW   = 14;             // stub width for secondary beam
+    memberData.forEach(({ n }, mi) => {
+      if (n.duration.base !== 'semiquaver') return;
+      const { tip } = memberData[mi];
+      // Secondary beam is closer to notehead than primary
+      const secY = tip.y - dir * beamGap;
+      const isLast2 = mi === members.length - 1;
+      const x1 = isLast2 ? tip.x - stubW - sw : tip.x - sw;
+      const x2 = isLast2 ? tip.x + sw         : tip.x + stubW + sw;
+      svg.appendChild(el('path', {
+        d: `M ${x1} ${secY - bh} L ${x2} ${secY - bh} L ${x2} ${secY + bh} L ${x1} ${secY + bh} Z`,
+        fill: 'var(--beam)',
+      }));
+    });
   }
 
   // ── Notes and rests ────────────────────────────────────────────────────
   laid.forEach(({ n, x }) => {
     if (n.type === 'rest') {
-      drawRest(svg, x, n.duration.base);
+      drawRest(svg, x, n.duration.base, lUPPER_Y, lLOWER_Y);
       return;
     }
 
-    const y   = noteY(n.degree, n.octaveShift);
+    const y   = nY(n.degree, n.octaveShift ?? 0);
     const dir = stemDir(n);
     const lbl = degreeLabel(n.degree, n.accidental);
     const base = n.duration.base;
@@ -714,6 +861,10 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
       // Flag for unbeamed quaver/semiquaver
       if (base === 'quaver' || base === 'semiquaver') {
         drawFlag(svg, tip.x, tip.y, dir);
+        if (base === 'semiquaver') {
+          const fs = dir === -1 ? 8 : -8;  // toward notehead
+          drawFlag(svg, tip.x, tip.y + fs, dir);
+        }
       }
     }
 
@@ -725,8 +876,8 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     }
 
     // Ledger-line hint for notes outside the staff (subtle accent line)
-    if (n.octaveShift !== 0) {
-      const refY = n.octaveShift > 0 ? L.UPPER_Y : L.LOWER_Y;
+    if ((n.octaveShift ?? 0) !== 0) {
+      const refY = (n.octaveShift ?? 0) > 0 ? lUPPER_Y : lLOWER_Y;
       svg.appendChild(el('line', {
         x1: x - 18, y1: refY, x2: x + 18, y2: refY,
         stroke: 'var(--accent)', 'stroke-width': 1.2,
@@ -745,7 +896,7 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     if (n.type === 'rest' || !n.tie || !n.tie.type) return;
     const tt   = n.tie.type;
     const gid  = n.tie.groupId;
-    const y    = noteY(n.degree, n.octaveShift ?? 0);
+    const y    = nY(n.degree, n.octaveShift ?? 0);
     const arcY = y + NH.RY + 5;
     if ((tt === 'start' || tt === 'continue') && !suppressTieStarts.has(gid)) {
       drawTieArc(svg, x, L.W - 2, arcY);
@@ -759,9 +910,9 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   const chordFont = chordFormat === 'roman' ? "'EB Garamond', serif" : "system-ui, sans-serif";
   (bar.chordSymbols || []).forEach(chord => {
     // Same formula as note layout — beat-start, so chord aligns with its note
-    const chordX = NOTE_AREA_LEFT + (chord.beatOffset / ts.beats) * NOTE_AREA_W;
+    const chordX = NOTE_AREA_LEFT + ((chord.beatOffset + startBeat) / ts.beats) * NOTE_AREA_W;
     svg.appendChild(el('text', {
-      x: chordX, y: L.CHORD_Y,
+      x: chordX, y: lCHORD_Y,
       fill: 'var(--chord)',
       'font-size': '18', 'font-weight': '700', 'font-style': 'normal',
       'font-family': chordFont, 'text-anchor': 'middle',
@@ -798,7 +949,16 @@ function barNotePositions(bar, showTS) {
   const NOTE_AREA_LEFT  = noteStart + 22;
   const NOTE_AREA_RIGHT = L.RIGHT - 18;
   const NOTE_AREA_W     = NOTE_AREA_RIGHT - NOTE_AREA_LEFT;
-  return layoutNotes(bar.notes, bar.timeSignature, NOTE_AREA_LEFT, NOTE_AREA_W);
+  const startBeat = (bar.pickup && bar.pickupBeats != null)
+    ? bar.timeSignature.beats - bar.pickupBeats : 0;
+  return layoutNotes(bar.notes, bar.timeSignature, NOTE_AREA_LEFT, NOTE_AREA_W, startBeat);
+}
+
+// Compute the SVG height needed for a bar based on octaveShift range of its notes.
+function barSVGHeight(bar) {
+  const low  = bar.notes.some(n => n.type !== 'rest' && (n.octaveShift ?? 0) <= -1);
+  const high = bar.notes.some(n => n.type !== 'rest' && (n.octaveShift ?? 0) >= 1);
+  return L.H + (low ? SPAN : 0) + (high ? SPAN : 0);
 }
 
 // Group bars into system rows such that each bar gets at least MIN_PX_PER_SLOT px
@@ -830,9 +990,10 @@ function computeRows(bars, containerWidth) {
 // APP STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
-let state = { key: 'G', format: 'nashville', theme: 'light' };
+let state = { song: 'praise', key: 'G', format: 'nashville', theme: 'light' };
 
 function render() {
+  const DOC = SONGS[state.song];
   const wrap = document.getElementById('scoreWrap');
   wrap.innerHTML = '';
 
@@ -846,6 +1007,9 @@ function render() {
     const isLastRow = rowIdx === rows.length - 1;
     const fillRatio = rowIndices.length / maxBarsInRow;
     const stretch   = !isLastRow || fillRatio >= 0.8;
+
+    // Row height: tallest bar in this row
+    const rowH = Math.max(...rowIndices.map(i => barSVGHeight(DOC.bars[i])));
 
     // Compute showTS for each bar in the row (needed for note position maths)
     const showTSArr = rowIndices.map(barIdx => {
@@ -882,7 +1046,8 @@ function render() {
         const gid = n.tie.groupId;
         (suppressStarts[rowIndices[p]]     ??= new Set()).add(gid);
         (suppressEnds[rowIndices[p + 1]]   ??= new Set()).add(gid);
-        const arcY = noteY(n.degree, n.octaveShift ?? 0) + NH.RY + 5;
+        const shiftA = barA.notes.some(nb => nb.type !== 'rest' && (nb.octaveShift ?? 0) >= 1) ? SPAN : 0;
+        const arcY = noteY(n.degree, n.octaveShift ?? 0) + shiftA + NH.RY + 5;
         spanningTies.push({ sx: p * L.W + sx, ex: (p + 1) * L.W + found.x, arcY });
       });
     }
@@ -903,7 +1068,8 @@ function render() {
       barWrap.appendChild(
         renderBar(bar, state.key, state.format, showTSArr[posInRow], isLast, isRowEnd,
           suppressStarts[barIdx] ?? new Set(),
-          suppressEnds[barIdx]   ?? new Set())
+          suppressEnds[barIdx]   ?? new Set(),
+          rowH)
       );
       rowEl.appendChild(barWrap);
     });
@@ -919,7 +1085,7 @@ function render() {
         ? '100%'
         : `${(barsInRow / maxBarsInRow * 100).toFixed(4)}%`;
       const overlay = el('svg', {
-        viewBox: `0 0 ${barsInRow * L.W} ${L.H}`,
+        viewBox: `0 0 ${barsInRow * L.W} ${rowH}`,
         xmlns: NS,
         style: `position:absolute;top:0;left:0;width:${overlayWidthPct};pointer-events:none;`,
       });
@@ -935,6 +1101,15 @@ function render() {
 }
 
 // ── Controls ───────────────────────────────────────────────────────────────
+document.getElementById('songSelect').addEventListener('change', e => {
+  state.song = e.target.value;
+  // Also update key selector to match the song's default key
+  const doc = SONGS[state.song];
+  state.key = doc.key;
+  document.getElementById('keySelect').value = doc.key;
+  render();
+});
+
 document.getElementById('keySelect').addEventListener('change', e => {
   state.key = e.target.value;
   render();
