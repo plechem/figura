@@ -851,15 +851,16 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const beamAtX = x => dx > 0 ? beamY0 + (beamY1 - beamY0) * (x - first.tip.x) / dx : beamY0;
 
     // ── Adjust stem tips to the beam line ──────────────────────────────
-    // Every stem tip is moved to exactly meet the beam. A minimum stem length
-    // guard ensures the beam cannot collapse onto the notehead.
+    // Shift the entire beam as a unit so the most-constrained note gets exactly
+    // MIN_STEM, preserving the capped slope rather than distorting it per-note.
     const MIN_STEM = 30;
-    const adjTips = memberData.map(({ attach, tip }) => {
-      let y = beamAtX(tip.x);
-      if (dir === -1 && y > attach.y - MIN_STEM) y = attach.y - MIN_STEM;
-      if (dir ===  1 && y < attach.y + MIN_STEM) y = attach.y + MIN_STEM;
-      return { x: tip.x, y };
-    });
+    let beamShift = 0;
+    for (const { attach, tip } of memberData) {
+      const rawY = beamAtX(tip.x);
+      if (dir === -1) beamShift = Math.max(beamShift, rawY - (attach.y - MIN_STEM));
+      else            beamShift = Math.max(beamShift, (attach.y + MIN_STEM) - rawY);
+    }
+    const adjTips = memberData.map(({ tip }) => ({ x: tip.x, y: beamAtX(tip.x) + dir * beamShift }));
 
     // Draw stems with adjusted tips
     memberData.forEach(({ attach }, mi) => {
