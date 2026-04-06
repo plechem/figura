@@ -743,15 +743,16 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   const NOTE_AREA_RIGHT = L.RIGHT - 18;
   const NOTE_AREA_W     = NOTE_AREA_RIGHT - NOTE_AREA_LEFT;
 
-  // ── Dynamic y-coords based on octaveShift range ────────────────────────
-  const hasLowNotes  = bar.notes.some(n => n.type !== 'rest' && (n.octaveShift ?? 0) <= -1);
-  const hasHighNotes = bar.notes.some(n => n.type !== 'rest' && (n.octaveShift ?? 0) >= 1);
-  const SHIFT = hasHighNotes ? SPAN : 0;
+  // ── Dynamic y-coords based on actual note range ───────────────────────
+  const { highDeg, lowDeg, extraAbove, extraBelow } = barExtent(bar);
+  const SHIFT    = extraAbove;                                // shifts reference lines down for high notes
   const lUPPER_Y = L.UPPER_Y + SHIFT;
   const lLOWER_Y = L.LOWER_Y + SHIFT;
-  const lCHORD_Y = L.CHORD_Y + SHIFT + (hasLowNotes ? SPAN : 0);
-  const thirdTop = hasHighNotes ? lUPPER_Y - SPAN : null;   // = L.UPPER_Y when SHIFT=SPAN
-  const thirdBot = hasLowNotes  ? lLOWER_Y + SPAN : null;
+  const lCHORD_Y = L.CHORD_Y + SHIFT + extraBelow;
+  // Third tonic line only when the range exceeds 4 degrees — within that,
+  // floating noteheads are readable without an extra anchor line.
+  const thirdTop = highDeg > 4 ? lUPPER_Y - SPAN : null;   // = L.UPPER_Y when SHIFT=SPAN
+  const thirdBot = lowDeg  > 4 ? lLOWER_Y + SPAN : null;
   const barTop   = (thirdTop ?? lUPPER_Y) - 12;
   const barBot   = (thirdBot ?? lLOWER_Y) + 12;
 
@@ -1095,11 +1096,27 @@ function computeAutoBeams(laid, bar) {
   return { beamGroups, beamedIds };
 }
 
-// Compute the SVG height needed for a bar based on octaveShift range of its notes.
+// Compute degrees of extension outside the primary two-line staff, and the
+// proportional extra viewBox space those notes need.
+// highDeg = degrees above the upper tonic line; lowDeg = degrees below the lower.
+// A full SPAN (+ third tonic line) is used only when extension exceeds 4 degrees;
+// within that, space is proportional so height scales smoothly with actual range.
+function barExtent(bar) {
+  let highDeg = 0, lowDeg = 0;
+  for (const n of bar.notes) {
+    if (n.type === 'rest') continue;
+    const pos = (n.degree - 1) + 7 * (n.octaveShift ?? 0); // 0 = lower line, 7 = upper line
+    if (pos > 7) highDeg = Math.max(highDeg, pos - 7);
+    if (pos < 0) lowDeg  = Math.max(lowDeg, -pos);
+  }
+  const extraAbove = highDeg > 4 ? SPAN : Math.ceil(highDeg / 7 * SPAN);
+  const extraBelow = lowDeg  > 4 ? SPAN : Math.ceil(lowDeg  / 7 * SPAN);
+  return { highDeg, lowDeg, extraAbove, extraBelow };
+}
+
 function barSVGHeight(bar) {
-  const low  = bar.notes.some(n => n.type !== 'rest' && (n.octaveShift ?? 0) <= -1);
-  const high = bar.notes.some(n => n.type !== 'rest' && (n.octaveShift ?? 0) >= 1);
-  return L.H + (low ? SPAN : 0) + (high ? SPAN : 0);
+  const { extraAbove, extraBelow } = barExtent(bar);
+  return L.H + extraAbove + extraBelow;
 }
 
 // Group bars into system rows such that each bar gets at least MIN_PX_PER_SLOT px
@@ -1187,7 +1204,7 @@ function render() {
         const gid = n.tie.groupId;
         (suppressStarts[rowIndices[p]]     ??= new Set()).add(gid);
         (suppressEnds[rowIndices[p + 1]]   ??= new Set()).add(gid);
-        const shiftA = barA.notes.some(nb => nb.type !== 'rest' && (nb.octaveShift ?? 0) >= 1) ? SPAN : 0;
+        const shiftA = barExtent(barA).extraAbove;
         const arcY = noteY(n.degree, n.octaveShift ?? 0) + shiftA + NH.RY + 5;
         spanningTies.push({ sx: p * L.W + sx, ex: (p + 1) * L.W + found.x, arcY });
       });
