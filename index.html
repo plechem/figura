@@ -1038,30 +1038,56 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Minimum viewBox-unit width for a bar based on its densest note spacing.
-// MIN_NOTE_GAP viewBox units between note centres is screen-size independent because
-// physical note size scales by the same factor (containerWidth / L.W).
-// showTS is needed for the correct left margin; pickup bars use their pickupBeats range.
+// Two minimum gap constants:
+//   BEAMED_GAP — for pairs where both notes will be beamed (flag-free)
+//   FLAG_GAP   — when the leading note carries a flag (extends ~26 vb rightward)
+// The flag check uses the bar's beam-group windows to detect notes alone in their window.
 function barNaturalWidthVB(bar, showTS) {
-  const MIN_NOTE_GAP = 24; // viewBox units — ≈ 1.1× notehead diameter (2×NH.RX = 22)
+  const BEAMED_GAP = 22; // vb between note centres — beamed notes, no flag to worry about
+  const FLAG_GAP   = 40; // vb when leading note has a flag (stem-tip + flag width ≈ 26 vb)
   const ts = bar.timeSignature;
-  const isPickup = bar.pickup && bar.pickupBeats != null;
+  const isPickup  = bar.pickup && bar.pickupBeats != null;
   const beatRange = isPickup ? bar.pickupBeats : ts.beats;
   const noteAreaLeft = (showTS ? L.NOTE_START : L.NOTE_START_NO_TS) + 22;
 
-  let minBeatGap = beatRange;
-  let prevBeat   = null;
-  let beat       = isPickup ? ts.beats - bar.pickupBeats : 0;
+  // Build (note, absolute-beat) sequence, skipping rests
+  let beat = isPickup ? ts.beats - bar.pickupBeats : 0;
+  const noteBeats = [];
   for (const n of bar.notes) {
     const dur = BEAT_VAL[n.duration.base] * (n.duration.dots === 1 ? 1.5 : n.duration.dots === 2 ? 1.75 : 1);
-    if (n.type !== 'rest') {
-      if (prevBeat !== null) minBeatGap = Math.min(minBeatGap, beat - prevBeat);
-      prevBeat = beat;
-    }
+    if (n.type !== 'rest') noteBeats.push({ n, beat });
     beat += dur;
   }
 
-  const noteAreaVB = prevBeat === null ? MIN_NOTE_GAP : MIN_NOTE_GAP * beatRange / minBeatGap;
-  return noteAreaLeft + noteAreaVB + 18;
+  // Precompute beam windows so we can detect solo (flagged) notes
+  const divVal = 4 / ts.division;
+  let pos = 0;
+  const windows = bar.beamGrouping.map(size => {
+    const w = { start: pos, end: pos + size * divVal };
+    pos += size * divVal;
+    return w;
+  });
+  const isBeamable = n =>
+    n.duration.base === 'quaver' || n.duration.base === 'semiquaver' || n.duration.base === 'demisemiquaver';
+
+  // A note gets a flag if it's beamable but the only beamable note in its beat window.
+  function willBeFlagged(nb) {
+    if (!isBeamable(nb.n)) return false;
+    const win = windows.find(w => nb.beat >= w.start && nb.beat < w.end);
+    if (!win) return false;
+    return noteBeats.filter(m => isBeamable(m.n) && m.beat >= win.start && m.beat < win.end).length === 1;
+  }
+
+  // Find the note pair that demands the most horizontal space
+  let requiredNoteAreaVB = BEAMED_GAP; // baseline for single-note bars
+  for (let i = 0; i < noteBeats.length - 1; i++) {
+    const gap = noteBeats[i + 1].beat - noteBeats[i].beat;
+    if (gap <= 0) continue;
+    const minGap = willBeFlagged(noteBeats[i]) ? FLAG_GAP : BEAMED_GAP;
+    requiredNoteAreaVB = Math.max(requiredNoteAreaVB, minGap * beatRange / gap);
+  }
+
+  return noteAreaLeft + requiredNoteAreaVB + 18;
 }
 
 // Note x positions for a bar — same formula as the layout inside renderBar.
@@ -1155,11 +1181,10 @@ function barSVGHeight(bar) {
 function computeRows(bars, containerWidth) {
   const MIN_BAR_WIDTH = 160; // physical px floor for non-pickup bars
 
-  // Pre-compute which bars display a time signature (needed for left-margin in barNaturalWidthVB)
-  const firstNonPickupIdx = bars.findIndex(b => !b.pickup);
+  // Pre-compute which bars display a time signature (needed for left-margin in barNaturalWidthVB).
+  // TS always appears on the first bar in the piece (pickup or not) and on any TS change.
   const barShowTS = bars.map((bar, i) => {
-    if (bar.pickup) return false;
-    if (i === firstNonPickupIdx) return true;
+    if (i === 0) return true;
     const prev = bars[i - 1];
     return !prev ||
       bar.timeSignature.beats    !== prev.timeSignature.beats ||
@@ -1202,12 +1227,9 @@ function render() {
   const maxBarsInRow   = Math.max(...rows.map(r => r.length));
   const targetBarWidth = containerWidth / maxBarsInRow;
 
-  // Time-signature display is a piece-level decision:
-  // pickup bars never show TS; first non-pickup bar always shows TS; TS changes show too.
-  const firstNonPickupIdx = DOC.bars.findIndex(b => !b.pickup);
+  // Time-signature display: show on first bar in the piece (pickup or not) and on any TS change.
   const barShowTS = DOC.bars.map((bar, barIdx) => {
-    if (bar.pickup) return false;
-    if (barIdx === firstNonPickupIdx) return true;
+    if (barIdx === 0) return true;
     const prev = DOC.bars[barIdx - 1];
     return !prev ||
       bar.timeSignature.beats    !== prev.timeSignature.beats ||
