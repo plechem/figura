@@ -643,10 +643,14 @@ function degreeLabel(degree, accidental) {
 }
 
 function stemDir(note) {
+  const eff = note.degree + (note.octaveShift ?? 0) * 7;
+  // Notes outside the primary staff always stem toward the staff centre,
+  // regardless of any explicit stem field in the data.
+  if (eff < 0) return -1;  // below lower tonic line → stem up
+  if (eff > 7) return  1;  // above upper tonic line → stem down
   if (note.stem === 'up')   return -1;
   if (note.stem === 'down') return  1;
   // auto: notes in upper half → stem down, lower half → stem up
-  const eff = note.degree + (note.octaveShift ?? 0) * 7;
   return eff >= 4.5 ? 1 : -1;
 }
 
