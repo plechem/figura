@@ -853,7 +853,7 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     // ── Adjust stem tips to the beam line ──────────────────────────────
     // Shift the entire beam as a unit so the most-constrained note gets exactly
     // MIN_STEM, preserving the capped slope rather than distorting it per-note.
-    const MIN_STEM = 30;
+    const MIN_STEM = L.STEM_LEN;
     let beamShift = 0;
     for (const { attach, tip } of memberData) {
       const rawY = beamAtX(tip.x);
