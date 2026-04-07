@@ -198,6 +198,7 @@
     <select id="songSelect">
       <option value="praise">Praise The Lord Forever</option>
       <option value="waymaker">Way Maker</option>
+      <option value="holyforever">Holy Forever</option>
     </select>
   </div>
   <div class="ctrl-group">
@@ -223,6 +224,13 @@
       <option value="nashville">Nashville  1, 4, 5</option>
       <option value="roman">Roman  I, IV, V</option>
       <option value="named">Named  C, F, G</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label for="styleSelect">Style</label>
+    <select id="styleSelect">
+      <option value="heads">Noteheads</option>
+      <option value="numerals">Numerals</option>
     </select>
   </div>
 </div>
@@ -337,6 +345,57 @@ const SONGS = {
         NOTE('n-801', 1, 'whole', 0, null, 'end', 'tie-x'),
       ], []),
     ]
+  },
+
+  holyforever: {
+    title: 'Holy Forever',
+    key: 'G',
+    keyMode: 'major',
+    defaultTimeSignature: { beats: 4, division: 4 },
+    bars: [
+      // Pickup: dotted quaver 3 | dotted quaver 1 | quaver 6(-1, tie→bar1)
+      // 2-beat pickup (right-aligned into bar 1)
+      BAR('hf-p', 0, [
+        NOTE('hfp-1', 3, 'quaver',   1, 'up'),
+        NOTE('hfp-2', 1, 'quaver',   1, 'up'),
+        NOTE('hfp-3', 6, 'quaver',   0, 'up', 'start', 'hf-ta', -1),
+      ], [], { pickup: true, pickupBeats: 2 }),
+
+      // Bar 1: minim 6(-1, tie-end) | crotchet 3 | crotchet 1
+      // Chords: 4 at beat 1; 4/3 (C/E) at beat 4
+      BAR('hf-1', 1, [
+        NOTE('hf1-1', 6, 'minim',    0, 'up',  'end',  'hf-ta', -1),
+        NOTE('hf1-2', 3, 'crotchet', 0, 'up'),
+        NOTE('hf1-3', 1, 'crotchet', 0, 'up'),
+      ], [
+        CHORD(4, 'major', 0),
+        Object.assign(CHORD(4, 'major', 3), { bass: { degree: 3, accidental: null } }),
+      ]),
+
+      // Bar 2: minim 2 | dotted quaver 2 | dotted quaver 7(-1) | quaver 5(-1, tie→bar3)
+      BAR('hf-2', 2, [
+        NOTE('hf2-1', 2, 'minim',    0, 'up'),
+        NOTE('hf2-2', 2, 'quaver',   1, 'up'),
+        NOTE('hf2-3', 7, 'quaver',   1, 'up', null, null, -1),
+        NOTE('hf2-4', 5, 'quaver',   0, 'up', 'start', 'hf-tb', -1),
+      ], [CHORD(5, 'major', 0)]),
+
+      // Bar 3: minim 5(-1, tie-end) | crotchet 2 | crotchet 7(-1)
+      BAR('hf-3', 3, [
+        NOTE('hf3-1', 5, 'minim',    0, 'up',  'end',  'hf-tb', -1),
+        NOTE('hf3-2', 2, 'crotchet', 0, 'up'),
+        NOTE('hf3-3', 7, 'crotchet', 0, 'up', null, null, -1),
+      ], [CHORD(3, 'minor', 0)]),
+
+      // Bar 4: whole 1
+      // Chords: 6m at beat 1; 5 at beat 3
+      BAR('hf-4', 4, [
+        NOTE('hf4-1', 1, 'whole',    0),
+      ], [
+        CHORD(6, 'minor', 0),
+        CHORD(5, 'major', 2),
+      ]),
+    ],
   },
 
   waymaker: {
@@ -645,29 +704,49 @@ function drawFlag(svg, tipX, tipY, dir) {
   svg.appendChild(el('path', { d, fill: 'var(--fg)' }));
 }
 
-function drawNotehead(svg, x, y, duration, label) {
+function drawNotehead(svg, x, y, duration, label, noteStyle) {
   const isWhole  = duration === 'whole';
   const isMinim  = duration === 'minim';
   const isHollow = isWhole || isMinim;
+  const useNumerals = noteStyle === 'numerals';
 
-  svg.appendChild(el('ellipse', {
-    cx: x, cy: y, rx: NH.RX, ry: NH.RY,
-    fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
-    stroke: 'var(--note-fill)', 'stroke-width': 1.8,
-    transform: `rotate(${NH.ANGLE},${x},${y})`
-  }));
+  if (useNumerals && !isHollow) {
+    // ── Numerals mode, filled note: bare large numeral only (no ellipse)
+    svg.appendChild(el('text', {
+      x, y,
+      fill: 'var(--fg)',
+      'font-size': label.length > 2 ? '13' : '17',
+      'font-weight': '700',
+      'font-family': 'system-ui, sans-serif',
+      'text-anchor': 'middle',
+      'dominant-baseline': 'central',
+    }, label));
+  } else {
+    // ── Heads mode (all durations) or Numerals mode (hollow notes only):
+    //    draw the ellipse notehead
+    svg.appendChild(el('ellipse', {
+      cx: x, cy: y, rx: NH.RX, ry: NH.RY,
+      fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
+      stroke: 'var(--note-fill)', 'stroke-width': 1.8,
+      transform: `rotate(${NH.ANGLE},${x},${y})`
+    }));
 
-  // Degree label — always upright, centred on notehead
-  const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
-  svg.appendChild(el('text', {
-    x, y,
-    fill: textFill,
-    'font-size': label.length > 2 ? '9' : '11.5',
-    'font-weight': '700',
-    'font-family': 'system-ui, sans-serif',
-    'text-anchor': 'middle',
-    'dominant-baseline': 'central',
-  }, label));
+    // Degree label — upright, centred on notehead
+    // In numerals mode the label is slightly larger to improve legibility
+    const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
+    const baseSize  = label.length > 2 ? 9   : 11.5;
+    const extraSize = label.length > 2 ? 1.5 : 1.5;
+    const fontSize  = useNumerals ? baseSize + extraSize : baseSize;
+    svg.appendChild(el('text', {
+      x, y,
+      fill: textFill,
+      'font-size': fontSize,
+      'font-weight': '700',
+      'font-family': 'system-ui, sans-serif',
+      'text-anchor': 'middle',
+      'dominant-baseline': 'central',
+    }, label));
+  }
 }
 
 function degreeLabel(degree, accidental) {
@@ -762,7 +841,7 @@ function drawTieArc(svg, sx, ex, arcY) {
 
 function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false,
                    suppressTieStarts = new Set(), suppressTieEnds = new Set(), rowHeight = L.H,
-                   barWidth = L.W, barNumber = 0) {
+                   barWidth = L.W, barNumber = 0, noteStyle = 'heads') {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -1000,7 +1079,7 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const isBeamed = beamedIds.has(n.id);
 
     // Notehead
-    drawNotehead(svg, x, y, base, lbl);
+    drawNotehead(svg, x, y, base, lbl, noteStyle);
 
     // Stem (skip for whole notes and beamed notes — beamed stems drawn above)
     if (base !== 'whole' && !isBeamed) {
@@ -1270,7 +1349,7 @@ function computeRows(bars, containerWidth) {
 // APP STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
-let state = { song: 'praise', key: 'G', format: 'nashville', theme: 'light' };
+let state = { song: 'praise', key: 'G', format: 'nashville', theme: 'light', noteStyle: 'heads' };
 
 function render() {
   const DOC = SONGS[state.song];
@@ -1372,7 +1451,7 @@ function render() {
         renderBar(bar, state.key, state.format, showTSArr[posInRow], isLast, isRowEnd,
           suppressStarts[barIdx] ?? new Set(),
           suppressEnds[barIdx]   ?? new Set(),
-          rowH, barWidths[posInRow])
+          rowH, barWidths[posInRow], 0, state.noteStyle)
       );
       rowEl.appendChild(barWrap);
     });
@@ -1416,6 +1495,11 @@ document.getElementById('keySelect').addEventListener('change', e => {
 
 document.getElementById('formatSelect').addEventListener('change', e => {
   state.format = e.target.value;
+  render();
+});
+
+document.getElementById('styleSelect').addEventListener('change', e => {
+  state.noteStyle = e.target.value;
   render();
 });
 
