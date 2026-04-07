@@ -1,10 +1,11 @@
 // Figura Service Worker — offline-first cache
-const CACHE = 'figura-v23';
+const CACHE = 'figura-v24';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon.svg',
+  'https://cdn.jsdelivr.net/npm/@vexflow-fonts/bravura/bravura.woff2',
 ];
 
 self.addEventListener('install', e => {
@@ -26,7 +27,7 @@ self.addEventListener('fetch', e => {
     caches.match(e.request).then(cached => {
       if (cached) return cached;
       return fetch(e.request).then(res => {
-        if (!res || res.status !== 200 || res.type !== 'basic') return res;
+        if (!res || res.status !== 200 || (res.type !== 'basic' && res.type !== 'cors')) return res;
         const clone = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, clone));
         return res;
