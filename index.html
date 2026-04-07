@@ -711,17 +711,30 @@ function vfGlyph(path, ox, oy, scale) {
 
 function drawRest(svg, x, base, upperY, lowerY) {
   const midY = (upperY + lowerY) / 2;
+  const LW = 13;  // half-width of ledger line on long rests (rect is 10 each side)
   if (base === 'whole') {
-    // Filled rectangle hanging from upper line
+    // Short ledger line at the hanging-line, slightly wider than the rectangle.
+    // Drawn first so the filled rect overlaps its centre, leaving only the wings.
+    svg.appendChild(el('line', {
+      x1: x - LW, y1: upperY, x2: x + LW, y2: upperY,
+      stroke: 'var(--fg)', 'stroke-width': 1.8,
+    }));
+    // Filled rectangle hanging below the ledger line
     svg.appendChild(el('rect', {
       x: x - 10, y: upperY, width: 20, height: 8,
-      fill: 'var(--fg)', rx: 1
+      fill: 'var(--fg)', rx: 1,
     }));
   } else if (base === 'minim') {
-    // Open rectangle sitting on lower line
+    // Filled rectangle sitting above the ledger line.
+    // Drawn first; the line is drawn after to anchor the bottom edge visually.
     svg.appendChild(el('rect', {
       x: x - 10, y: lowerY - 8, width: 20, height: 8,
-      fill: 'none', stroke: 'var(--fg)', 'stroke-width': 1.6, rx: 1
+      fill: 'var(--fg)', rx: 1,
+    }));
+    // Short ledger line at the sitting-line, slightly wider than the rectangle
+    svg.appendChild(el('line', {
+      x1: x - LW, y1: lowerY, x2: x + LW, y2: lowerY,
+      stroke: 'var(--fg)', 'stroke-width': 1.8,
     }));
   } else if (base === 'crotchet' || base === 'quaver' || base === 'semiquaver' || base === 'demisemiquaver') {
     // Bravura glyph rests. Scale: ≈ 0.053 for default SPAN=76 (≈ 3 staff-spaces tall).
