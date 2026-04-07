@@ -720,9 +720,9 @@ function drawRest(svg, x, base, upperY, lowerY, attachY) {
     }));
   } else if (base === 'crotchet' || base === 'quaver' || base === 'semiquaver' || base === 'demisemiquaver') {
     // Render via Bravura (SMuFL) font — avoids path-scaling artefacts entirely.
-    // Font size = SPAN so 4 SMuFL staff-spaces fills our reference-line span exactly.
-    // Baseline (y) at lowerY: SMuFL places glyphs above their baseline just as our
-    // lower tonic line is the bottom of the staff.
+    // Centred on midY (= attachY) using dominant-baseline:central so the glyph
+    // sits between the tonic lines on a 2-line staff, or on the centre tonic
+    // line of a 3-line staff — same rule as whole/minim rests.
     const SMUFL = {
       crotchet:       '\uE4E5',
       quaver:         '\uE4E6',
@@ -730,10 +730,11 @@ function drawRest(svg, x, base, upperY, lowerY, attachY) {
       demisemiquaver: '\uE4E8',
     };
     svg.appendChild(el('text', {
-      x, y: lowerY,
+      x, y: midY,
       'font-family': 'Bravura',
       'font-size': lowerY - upperY,
       'text-anchor': 'middle',
+      'dominant-baseline': 'central',
       fill: 'var(--fg)',
     }, SMUFL[base]));
   } else {
