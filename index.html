@@ -567,22 +567,48 @@ const BEAT_VAL = {
   whole: 4, minim: 2, crotchet: 1, quaver: 0.5, semiquaver: 0.25, demisemiquaver: 0.125
 };
 
-// Proportional beat-start layout.
-// Every note sits at the x corresponding to its beat position — no centering.
-// Two quavers therefore occupy the same horizontal span as one crotchet.
-// areaLeft and areaWidth are passed in so chord symbols use the identical formula.
-// beatOffset: the beat value that maps to areaLeft (0 for full bars; startBeat for pickup bars).
-// beatRange:  the number of beats that span the full areaWidth (ts.beats for full bars; pickupBeats for pickup bars).
+// Optical spacing exponent — Lilypond uses ≈ 2/3 (0.667).
+// Space allocated per item ∝ dur^OPTICAL_ALPHA rather than dur (linear).
+// Long notes get proportionally less space; short notes get proportionally more.
+const OPTICAL_ALPHA = 0.62;
+
+// Optical note layout.
+// Positions are proportional to cumulative dur^OPTICAL_ALPHA weights, so a minim
+// no longer steals twice the space of a crotchet.  Beat accumulation still uses
+// startBeat so beam-window logic (which checks absolute beats) works correctly.
+// beatOffset / beatRange / ts are kept in the signature for call-site compat.
 function layoutNotes(notes, ts, areaLeft, areaWidth, startBeat = 0, beatOffset = 0, beatRange = null) {
-  const range = beatRange ?? ts.beats;
   let beat = startBeat;
-  return notes.map(n => {
+  const items = notes.map(n => {
     const dur = BEAT_VAL[n.duration.base] * (n.duration.dots === 1 ? 1.5 : n.duration.dots === 2 ? 1.75 : 1);
-    const x = areaLeft + ((beat - beatOffset) / range) * areaWidth;
     const b = beat;
     beat += dur;
-    return { n, x, dur, beat: b };
+    return { n, beat: b, dur };
   });
+  if (items.length === 0) return [];
+  const weights = items.map(it => Math.pow(it.dur, OPTICAL_ALPHA));
+  const totalW  = weights.reduce((a, b) => a + b, 0);
+  let cumW = 0;
+  return items.map((it, i) => {
+    const x = areaLeft + (totalW > 0 ? cumW / totalW : 0) * areaWidth;
+    cumW += weights[i];
+    return { n: it.n, x, dur: it.dur, beat: it.beat };
+  });
+}
+
+// Map an absolute beat to an optical x coordinate by linear interpolation
+// between the nearest laid-out note positions.  Used for chord symbols.
+function beatToOpticalX(targetBeat, laid, areaLeft, areaRight) {
+  if (laid.length === 0) return areaLeft;
+  if (targetBeat <= laid[0].beat) return laid[0].x;
+  for (let i = 0; i < laid.length - 1; i++) {
+    const a = laid[i], b = laid[i + 1];
+    if (targetBeat >= a.beat && targetBeat <= b.beat) {
+      const t = (targetBeat - a.beat) / (b.beat - a.beat);
+      return a.x + t * (b.x - a.x);
+    }
+  }
+  return laid[laid.length - 1].x;
 }
 
 // ── Drawing helpers ───────────────────────────────────────────────────────
@@ -875,14 +901,23 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const beamAtX = x => dx > 0 ? beamY0 + (beamY1 - beamY0) * (x - first.tip.x) / dx : beamY0;
 
     // ── Adjust stem tips to the beam line ──────────────────────────────
-    // Shift the entire beam as a unit so the most-constrained note gets exactly
-    // MIN_STEM, preserving the capped slope rather than distorting it per-note.
+    // Two constraints are combined into a single uniform beam shift:
+    //   1. MIN_STEM: every stem must be at least STEM_LEN long.
+    //   2. Staff clearance (Gould): the beam must not penetrate the reference
+    //      lines.  For up-stem groups the beam bottom edge (rawY + bh) must be
+    //      ≤ lUPPER_Y; for down-stem the beam top edge (rawY − bh) must be
+    //      ≥ lLOWER_Y.
     const MIN_STEM = L.STEM_LEN;
     let beamShift = 0;
     for (const { attach, tip } of memberData) {
       const rawY = beamAtX(tip.x);
-      if (dir === -1) beamShift = Math.max(beamShift, rawY - (attach.y - MIN_STEM));
-      else            beamShift = Math.max(beamShift, (attach.y + MIN_STEM) - rawY);
+      if (dir === -1) {
+        beamShift = Math.max(beamShift, rawY - (attach.y - MIN_STEM)); // min stem
+        beamShift = Math.max(beamShift, rawY + bh - lUPPER_Y);         // clear upper line
+      } else {
+        beamShift = Math.max(beamShift, (attach.y + MIN_STEM) - rawY); // min stem
+        beamShift = Math.max(beamShift, lLOWER_Y + bh - rawY);         // clear lower line
+      }
     }
     const adjTips = memberData.map(({ tip }) => ({ x: tip.x, y: beamAtX(tip.x) + dir * beamShift }));
 
@@ -943,9 +978,19 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   }
 
   // ── Notes and rests ────────────────────────────────────────────────────
-  laid.forEach(({ n, x }) => {
+  laid.forEach(({ n, x, beat }) => {
     if (n.type === 'rest') {
-      drawRest(svg, x, n.duration.base, lUPPER_Y, lLOWER_Y);
+      // Gould: whole rests centre in the full note area; minim rests centre in their
+      // 2-beat linear slot so they feel "inside" the half-bar, not at its edge.
+      let rx = x;
+      if (n.duration.base === 'whole') {
+        rx = NOTE_AREA_LEFT + NOTE_AREA_W / 2;
+      } else if (n.duration.base === 'minim' && !isPickup) {
+        // Centre of the 2-beat slot: linear mapping (restoring a beat-grid reference)
+        const slotMid = beat + 1;
+        rx = NOTE_AREA_LEFT + ((slotMid - beatOffset) / beatRange) * NOTE_AREA_W;
+      }
+      drawRest(svg, rx, n.duration.base, lUPPER_Y, lLOWER_Y);
       return;
     }
 
@@ -1031,8 +1076,8 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   // ── Chord symbols ──────────────────────────────────────────────────────
   const chordFont = chordFormat === 'roman' ? "'EB Garamond', serif" : "system-ui, sans-serif";
   (bar.chordSymbols || []).forEach(chord => {
-    // Same formula as note layout: subtract beatOffset then scale over beatRange.
-    const chordX = NOTE_AREA_LEFT + ((chord.beatOffset - beatOffset) / beatRange) * NOTE_AREA_W;
+    // Use the same optical x-grid as the notes: interpolate between note positions.
+    const chordX = beatToOpticalX(chord.beatOffset, laid, NOTE_AREA_LEFT, NOTE_AREA_LEFT + NOTE_AREA_W);
     svg.appendChild(el('text', {
       x: chordX, y: lCHORD_Y,
       fill: 'var(--chord)',
