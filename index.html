@@ -355,7 +355,7 @@ const SONGS = {
         NOTE('wm1-5', 6, 'semiquaver', 0, 'up',   'end',   'wm-te'),
         NOTE('wm1-6', 5, 'quaver',     0, 'up'),
         NOTE('wm1-7', 3, 'semiquaver', 0, 'up',   'start', 'wm-tb'),
-      ], [CHORD(1, 'major', 0)]),
+      ], [CHORD(4, 'major', 0)]),
 
       // Bar 2: minim | beat3: rest + semiq+semiq (tied at beat boundary) | beat4: quaver+semiq+semiq
       BAR('wm-2', 2, [
@@ -366,7 +366,7 @@ const SONGS = {
         NOTE('wm2-4', 5, 'quaver',     0, 'up',   'end',   'wm-tf'),
         NOTE('wm2-5', 1, 'semiquaver', 0, 'up'),
         NOTE('wm2-6', 2, 'semiquaver', 0, 'up',   'start', 'wm-tc'),
-      ], [CHORD(4, 'major', 0)]),
+      ], [CHORD(1, 'major', 0)]),
 
       // Bar 3: minim | beat3: rest + semiq+semiq (tied at beat boundary) | beat4: quaver+semiq+semiq(oct-1)
       BAR('wm-3', 3, [
@@ -377,7 +377,7 @@ const SONGS = {
         NOTE('wm3-4', 3, 'quaver',     0, 'up',   'end',   'wm-tg'),
         NOTE('wm3-5', 1, 'semiquaver', 0, 'up'),
         NOTE('wm3-6', 6, 'semiquaver', 0, 'up',   'start', 'wm-td', -1),
-      ], [CHORD(1, 'major', 0)]),
+      ], [CHORD(5, 'major', 0)]),
 
       // Bar 4 (elapsed 0–4):
       // beat 0: deg6 minim oct-1 [tie-end wm-td]             2.0 beats
@@ -385,7 +385,7 @@ const SONGS = {
       BAR('wm-4', 4, [
         NOTE('wm4-1', 6, 'minim', 0, 'down', 'end', 'wm-td', -1),
         REST('wm4-r1', 'minim', 0),
-      ], [CHORD(5, 'major', 0)]),
+      ], [CHORD(6, 'minor', 0)]),
     ]
   },
 };
@@ -1296,21 +1296,13 @@ function render() {
   const maxBarsInRow   = Math.max(...rows.map(r => r.length));
   const targetBarWidth = containerWidth / maxBarsInRow;
 
-  // Time-signature display: show on first bar in the piece (pickup or not) and on any TS change.
-  // Also show on the first bar of every row after row 0 (standard notation: repeat TS at each system).
-  // We'll mark all positions first, then fold in row-start awareness after row computation.
-  const barShowTSBase = DOC.bars.map((bar, barIdx) => {
+  // Time-signature display: first bar of the piece and any TS change only.
+  const barShowTS = DOC.bars.map((bar, barIdx) => {
     if (barIdx === 0) return true;
     const prev = DOC.bars[barIdx - 1];
-    return !prev ||
-      bar.timeSignature.beats    !== prev.timeSignature.beats ||
-      bar.timeSignature.division !== prev.timeSignature.division;
+    return bar.timeSignature.beats    !== prev.timeSignature.beats ||
+           bar.timeSignature.division !== prev.timeSignature.division;
   });
-
-  // Bar numbers: 0 for pickup bars, 1-indexed counting only full bars.
-  // Displayed only on the first bar of system rows after the first.
-  let fullBarCount = 0;
-  const barNumberArr = DOC.bars.map(bar => bar.pickup ? 0 : ++fullBarCount);
 
   // Minimum flex-weight for non-pickup bars (≈ 160 physical px in viewBox units).
   const minFW = 160 * L.W / containerWidth;
@@ -1321,8 +1313,7 @@ function render() {
     const fillRatio = barsInRow / maxBarsInRow;
     const stretch   = !isLastRow || fillRatio >= 0.8;
 
-    // showTS per bar: base rules + force TS on the first bar of every row after row 0.
-    const showTSArr = rowIndices.map((i, p) => barShowTSBase[i] || (rowIdx > 0 && p === 0));
+    const showTSArr = rowIndices.map(i => barShowTS[i]);
 
     // Per-bar flex weights (viewBox units): geometry-derived, floor for non-pickup.
     // Since barWidth_i = L.W × fw_i/totalFlex, note scale = containerWidth/L.W
@@ -1384,9 +1375,6 @@ function render() {
       const bar      = DOC.bars[barIdx];
       const isLast   = barIdx === DOC.bars.length - 1;
       const isRowEnd = posInRow === rowIndices.length - 1;
-      // Show bar number on the first bar of each row after the first row.
-      const showBarNum = (rowIdx > 0 && posInRow === 0) ? barNumberArr[barIdx] : 0;
-
       const barWrap = document.createElement('div');
       if (stretch) {
         barWrap.style.cssText = `flex:${flexWeights[posInRow]}; min-width:0;`;
@@ -1398,7 +1386,7 @@ function render() {
         renderBar(bar, state.key, state.format, showTSArr[posInRow], isLast, isRowEnd,
           suppressStarts[barIdx] ?? new Set(),
           suppressEnds[barIdx]   ?? new Set(),
-          rowH, barWidths[posInRow], showBarNum)
+          rowH, barWidths[posInRow])
       );
       rowEl.appendChild(barWrap);
     });
