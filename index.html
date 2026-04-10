@@ -230,7 +230,7 @@
     <label for="styleSelect">Style</label>
     <select id="styleSelect">
       <option value="heads">Noteheads</option>
-      <option value="numerals">Numerals</option>
+      <option value="numerals" selected>Numerals</option>
     </select>
   </div>
 </div>
@@ -1460,7 +1460,20 @@ function computeRows(bars, containerWidth) {
 // APP STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
-let state = { song: 'praise', key: 'G', format: 'nashville', theme: 'light', noteStyle: 'heads' };
+const DEFAULTS = { song: 'praise', key: 'G', format: 'nashville', theme: 'light', noteStyle: 'numerals' };
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('figura-state') ?? '{}');
+    return { ...DEFAULTS, ...saved };
+  } catch { return { ...DEFAULTS }; }
+}
+
+function saveState() {
+  try { localStorage.setItem('figura-state', JSON.stringify(state)); } catch {}
+}
+
+let state = loadState();
 
 function render() {
   const DOC = SONGS[state.song];
@@ -1596,21 +1609,25 @@ document.getElementById('songSelect').addEventListener('change', e => {
   const doc = SONGS[state.song];
   state.key = doc.key;
   document.getElementById('keySelect').value = doc.key;
+  saveState();
   render();
 });
 
 document.getElementById('keySelect').addEventListener('change', e => {
   state.key = e.target.value;
+  saveState();
   render();
 });
 
 document.getElementById('formatSelect').addEventListener('change', e => {
   state.format = e.target.value;
+  saveState();
   render();
 });
 
 document.getElementById('styleSelect').addEventListener('change', e => {
   state.noteStyle = e.target.value;
+  saveState();
   render();
 });
 
@@ -1618,9 +1635,19 @@ document.getElementById('themeBtn').addEventListener('click', () => {
   state.theme = state.theme === 'light' ? 'dark' : 'light';
   document.body.dataset.theme = state.theme === 'dark' ? 'dark' : '';
   document.getElementById('themeBtn').textContent = state.theme === 'dark' ? 'Light' : 'Dark';
+  saveState();
 });
 
 // ── Boot ───────────────────────────────────────────────────────────────────
+// Restore controls to match persisted state before first render
+document.getElementById('songSelect').value   = state.song;
+document.getElementById('keySelect').value    = state.key;
+document.getElementById('formatSelect').value = state.format;
+document.getElementById('styleSelect').value  = state.noteStyle;
+if (state.theme === 'dark') {
+  document.body.dataset.theme = 'dark';
+  document.getElementById('themeBtn').textContent = 'Light';
+}
 render();
 
 // Re-layout when container width changes (portrait↔landscape, resize, etc.)
