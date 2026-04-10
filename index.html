@@ -742,12 +742,16 @@ function drawNotehead(svg, x, y, duration, label, noteStyle) {
       transform: `rotate(${NH.ANGLE},${x},${y})`
     }));
 
-    // Degree label — upright, centred on notehead
-    // In numerals mode hollow notes get a larger label (ellipse bounds it naturally)
+    // Degree label — upright, centred on notehead.
+    // In numerals mode hollow notes get a larger label that may overflow the ellipse;
+    // a bg-coloured stroke behind the fill creates a knockout halo so the numeral
+    // reads cleanly against the ellipse outline.
+    // NOTE: the halo uses var(--bg) which becomes opaque on PNG export — revisit
+    // when PNG export is implemented (proper SVG mask knockout needed then).
     const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
     const baseSize = label.length > 2 ? 9 : 11.5;
     const fontSize = useNumerals ? (label.length > 2 ? 12 : 15) : baseSize;
-    svg.appendChild(el('text', {
+    const textAttrs = {
       x, y,
       fill: textFill,
       'font-size': fontSize,
@@ -755,7 +759,19 @@ function drawNotehead(svg, x, y, duration, label, noteStyle) {
       'font-family': 'system-ui, sans-serif',
       'text-anchor': 'middle',
       'dominant-baseline': 'central',
-    }, label));
+    };
+    if (useNumerals && isHollow) {
+      // Halo pass: thick bg-coloured stroke drawn behind the fill
+      svg.appendChild(el('text', {
+        ...textAttrs,
+        fill: 'var(--bg)',
+        stroke: 'var(--bg)',
+        'stroke-width': '4',
+        'stroke-linejoin': 'round',
+        'paint-order': 'stroke',
+      }, label));
+    }
+    svg.appendChild(el('text', textAttrs, label));
   }
 }
 
