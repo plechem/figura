@@ -236,6 +236,13 @@
       <option value="heads">Noteheads</option>
     </select>
   </div>
+  <div class="ctrl-group">
+    <label for="chordPosSelect">Chords</label>
+    <select id="chordPosSelect">
+      <option value="above">Above</option>
+      <option value="below">Below</option>
+    </select>
+  </div>
 </div>
 
 <div class="song-meta">
@@ -975,56 +982,45 @@ function drawParenBrackets(svg, x, y, rx = NH.RX, ry = NH.RY, angleDeg = NH.ANGL
   }
 }
 
-// Render the accidental as a small raised glyph above-left of the notehead centre.
-// Positioned above to avoid collisions with stems in both up and down directions.
-function drawAccidental(svg, x, y, accidental, large) {
-  const ch = accidental === 'flat' ? '♭' : accidental === 'sharp' ? '♯' : null;
-  if (!ch) return;
-  // large = numerals mode (26 px numeral); small = heads mode (11.5 px label)
-  svg.appendChild(el('text', {
-    x: x - (large ? 9 : 4),
-    y: y - (large ? 12 : 6),
-    fill: 'var(--fg)',
-    'font-size': large ? '14' : '7',
-    'font-weight': '700', 'font-family': 'system-ui, sans-serif',
-    'text-anchor': 'middle', 'dominant-baseline': 'central',
-  }, ch));
-}
-
-function drawNotehead(svg, x, y, duration, degree, accidental, noteStyle) {
+function drawNotehead(svg, x, y, duration, degree, accidental, noteStyle, dir = -1) {
   const isWhole     = duration === 'whole';
   const isMinim     = duration === 'minim';
   const isHollow    = isWhole || isMinim;
   const useNumerals = noteStyle === 'numerals';
   const numStr      = String(degree);
+  const accChar     = accidental === 'flat' ? '♭' : accidental === 'sharp' ? '♯' : null;
 
-  if (useNumerals && isHollow) {
-    // ── Numerals mode, hollow note: parenthesis brackets + large numeral
-    drawParenBrackets(svg, x, y,
-      isWhole ? NH_WHOLE.RX : NH.RX,
-      isWhole ? NH_WHOLE.RY : NH.RY,
-      isWhole ? 0 : NH.ANGLE);
+  if (useNumerals) {
+    // ── Numerals mode ──────────────────────────────────────────────────────
+    if (isHollow) {
+      drawParenBrackets(svg, x, y,
+        isWhole ? NH_WHOLE.RX : NH.RX,
+        isWhole ? NH_WHOLE.RY : NH.RY,
+        isWhole ? 0 : NH.ANGLE);
+    }
+    // Digit: always centered over the note's beat position
     svg.appendChild(el('text', {
       x, y, fill: 'var(--fg)',
-      'font-size': '26',
-      'font-weight': '700', 'font-family': 'system-ui, sans-serif',
+      'font-size': '26', 'font-weight': '700',
+      'font-family': 'system-ui, sans-serif',
       'text-anchor': 'middle', 'dominant-baseline': 'central',
     }, numStr));
-    drawAccidental(svg, x, y, accidental, true);
-
-  } else if (useNumerals && !isHollow) {
-    // ── Numerals mode, filled note: bare large numeral, no ellipse
-    svg.appendChild(el('text', {
-      x, y, fill: 'var(--fg)',
-      'font-size': '26',
-      'font-weight': '700', 'font-family': 'system-ui, sans-serif',
-      'text-anchor': 'middle', 'dominant-baseline': 'central',
-    }, numStr));
-    drawAccidental(svg, x, y, accidental, true);
+    // Accidental: inline to the left of the digit, right-aligned.
+    // Downstem notes (dir=1) have the stem at ≈ x−10; end the accidental at x−11
+    // to guarantee 1 px clearance.  Upstem/no-stem use x−8 (snug against the digit).
+    if (accChar) {
+      svg.appendChild(el('text', {
+        x: dir === 1 ? x - 11 : x - 8,
+        y, fill: 'var(--fg)',
+        'font-size': '26', 'font-weight': '700',
+        'font-family': 'system-ui, sans-serif',
+        'text-anchor': 'end', 'dominant-baseline': 'central',
+      }, accChar));
+    }
 
   } else {
-    // ── Heads mode: ellipse notehead + degree label
-    // Whole notes use NH_WHOLE (wider, nearly horizontal) matching standard engraving.
+    // ── Heads mode: ellipse notehead + inline label ─────────────────────
+    // Whole notes use NH_WHOLE (wider, fully horizontal) per engraving convention.
     const nhG = isWhole ? NH_WHOLE : NH;
     svg.appendChild(el('ellipse', {
       cx: x, cy: y, rx: nhG.RX, ry: nhG.RY,
@@ -1032,14 +1028,16 @@ function drawNotehead(svg, x, y, duration, degree, accidental, noteStyle) {
       stroke: 'var(--note-fill)', 'stroke-width': 1.8,
       transform: `rotate(${nhG.ANGLE},${x},${y})`
     }));
+    // Label is visually contained inside the ellipse; stem attaches to the
+    // ellipse edge which is outside the text bounding box — no collision risk.
     const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
+    const label    = (accChar ?? '') + numStr;
     svg.appendChild(el('text', {
       x, y, fill: textFill,
-      'font-size': '11.5',
+      'font-size': accChar ? '9' : '11.5',
       'font-weight': '700', 'font-family': 'system-ui, sans-serif',
       'text-anchor': 'middle', 'dominant-baseline': 'central',
-    }, numStr));
-    drawAccidental(svg, x, y, accidental, false);
+    }, label));
   }
 }
 
@@ -1135,7 +1133,7 @@ function drawTieArc(svg, sx, ex, arcY) {
 
 function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false,
                    suppressTieStarts = new Set(), suppressTieEnds = new Set(), rowHeight = L.H,
-                   barWidth = L.W, barNumber = 0, noteStyle = 'heads') {
+                   barWidth = L.W, barNumber = 0, noteStyle = 'heads', chordPosition = 'below') {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -1149,13 +1147,18 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   const SHIFT    = extraAbove;                                // shifts reference lines down for high notes
   const lUPPER_Y = L.UPPER_Y + SHIFT;
   const lLOWER_Y = L.LOWER_Y + SHIFT;
-  const lCHORD_Y = L.CHORD_Y + SHIFT + extraBelow;
   // Third tonic line only when the range exceeds 4 degrees — within that,
   // floating noteheads are readable without an extra anchor line.
   const thirdTop = highDeg > 4 ? lUPPER_Y - SPAN : null;   // = L.UPPER_Y when SHIFT=SPAN
   const thirdBot = lowDeg  > 4 ? lLOWER_Y + SPAN : null;
   const barTop   = (thirdTop ?? lUPPER_Y) - 12;
   const barBot   = (thirdBot ?? lLOWER_Y) + 12;
+  // Chord y: above the top staff line or below the bottom, depending on chordPosition.
+  // "above" sits 15 px above barTop (clear of notes and staff); "below" is the existing
+  // formula anchored to CHORD_Y and pushed further down for low-note bars.
+  const lCHORD_Y = chordPosition === 'above'
+    ? barTop - 15
+    : L.CHORD_Y + SHIFT + extraBelow;
 
   // Local noteY includes SHIFT
   const nY = (degree, octaveShift) => noteY(degree, octaveShift) + SHIFT;
@@ -1372,7 +1375,7 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const isBeamed = beamedIds.has(n.id);
 
     // Notehead
-    drawNotehead(svg, x, y, base, n.degree, n.accidental, noteStyle);
+    drawNotehead(svg, x, y, base, n.degree, n.accidental, noteStyle, dir);
 
     // Stem (skip for whole notes and beamed notes — beamed stems drawn above)
     if (base !== 'whole' && !isBeamed) {
@@ -1654,7 +1657,7 @@ function computeRows(bars, containerWidth) {
 // APP STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
-const DEFAULTS = { song: 'praise', key: 'G', format: 'nashville', theme: 'light', noteStyle: 'numerals' };
+const DEFAULTS = { song: 'praise', key: 'G', format: 'nashville', theme: 'light', noteStyle: 'numerals', chordPos: 'above' };
 
 function loadState() {
   try {
@@ -1769,7 +1772,7 @@ function render() {
         renderBar(bar, state.key, state.format, showTSArr[posInRow], isLast, isRowEnd,
           suppressStarts[barIdx] ?? new Set(),
           suppressEnds[barIdx]   ?? new Set(),
-          rowH, barWidths[posInRow], 0, state.noteStyle)
+          rowH, barWidths[posInRow], 0, state.noteStyle, state.chordPos)
       );
       rowEl.appendChild(barWrap);
     });
@@ -1825,6 +1828,12 @@ document.getElementById('styleSelect').addEventListener('change', e => {
   render();
 });
 
+document.getElementById('chordPosSelect').addEventListener('change', e => {
+  state.chordPos = e.target.value;
+  saveState();
+  render();
+});
+
 document.getElementById('themeBtn').addEventListener('click', () => {
   state.theme = state.theme === 'light' ? 'dark' : 'light';
   document.body.dataset.theme = state.theme === 'dark' ? 'dark' : '';
@@ -1834,10 +1843,11 @@ document.getElementById('themeBtn').addEventListener('click', () => {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 // Restore controls to match persisted state before first render
-document.getElementById('songSelect').value   = state.song;
-document.getElementById('keySelect').value    = state.key;
-document.getElementById('formatSelect').value = state.format;
-document.getElementById('styleSelect').value  = state.noteStyle;
+document.getElementById('songSelect').value      = state.song;
+document.getElementById('keySelect').value       = state.key;
+document.getElementById('formatSelect').value    = state.format;
+document.getElementById('styleSelect').value     = state.noteStyle;
+document.getElementById('chordPosSelect').value  = state.chordPos;
 if (state.theme === 'dark') {
   document.body.dataset.theme = 'dark';
   document.getElementById('themeBtn').textContent = 'Light';
