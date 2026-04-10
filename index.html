@@ -734,23 +734,27 @@ function drawNotehead(svg, x, y, duration, label, noteStyle) {
     }, label));
   } else {
     // ── Heads mode (all durations) or Numerals mode (hollow notes only):
-    //    draw the ellipse notehead
+    //    draw the ellipse notehead.
+    // In numerals mode, hollow noteheads are drawn slightly larger so the
+    // outline shell feels proportionate to the bigger numeral inside.
+    const rx = (useNumerals && isHollow) ? NH.RX * 1.25 : NH.RX;
+    const ry = (useNumerals && isHollow) ? NH.RY * 1.25 : NH.RY;
     svg.appendChild(el('ellipse', {
-      cx: x, cy: y, rx: NH.RX, ry: NH.RY,
+      cx: x, cy: y, rx, ry,
       fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
       stroke: 'var(--note-fill)', 'stroke-width': 1.8,
       transform: `rotate(${NH.ANGLE},${x},${y})`
     }));
 
     // Degree label — upright, centred on notehead.
-    // In numerals mode hollow notes get a larger label that may overflow the ellipse;
-    // a bg-coloured stroke behind the fill creates a knockout halo so the numeral
-    // reads cleanly against the ellipse outline.
+    // In numerals mode hollow notes use the same large size as filled notes,
+    // overflowing the ellipse; a bg-coloured halo stroke separates the numeral
+    // edges from the ellipse outline visually.
     // NOTE: the halo uses var(--bg) which becomes opaque on PNG export — revisit
     // when PNG export is implemented (proper SVG mask knockout needed then).
     const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
     const baseSize = label.length > 2 ? 9 : 11.5;
-    const fontSize = useNumerals ? (label.length > 2 ? 12 : 15) : baseSize;
+    const fontSize = useNumerals ? (label.length > 2 ? 20 : 26) : baseSize;
     const textAttrs = {
       x, y,
       fill: textFill,
@@ -761,12 +765,12 @@ function drawNotehead(svg, x, y, duration, label, noteStyle) {
       'dominant-baseline': 'central',
     };
     if (useNumerals && isHollow) {
-      // Halo pass: thick bg-coloured stroke drawn behind the fill
+      // Halo pass: bg-coloured stroke drawn behind the fill
       svg.appendChild(el('text', {
         ...textAttrs,
         fill: 'var(--bg)',
         stroke: 'var(--bg)',
-        'stroke-width': '4',
+        'stroke-width': '3',
         'stroke-linejoin': 'round',
         'paint-order': 'stroke',
       }, label));
