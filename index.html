@@ -200,6 +200,7 @@
       <option value="waymaker">Way Maker</option>
       <option value="holyforever">Holy Forever</option>
       <option value="nolongerslaves">No Longer Slaves</option>
+      <option value="ispeakjesus">I Speak Jesus</option>
     </select>
   </div>
   <div class="ctrl-group">
@@ -502,6 +503,53 @@ const SONGS = {
         CHORD(1, 'major', 0),
         CHORD(4, 'major', 2),
       ]),
+    ],
+  },
+
+  ispeakjesus: {
+    title: 'I Speak Jesus',
+    key: 'A',
+    keyMode: 'major',
+    defaultTimeSignature: { beats: 4, division: 4 },
+    bars: [
+      // Bar 1: minim 3 | minim 4 — chord 1
+      BAR('isj-1', 0, [
+        NOTE('isj-11', 3, 'minim', 0, 'auto'),
+        NOTE('isj-12', 4, 'minim', 0, 'auto'),
+      ], [CHORD(1, 'major', 0)]),
+
+      // Bar 2: minim 5 | crotchet 7 | crotchet 1(oct+1) — chord continues
+      BAR('isj-2', 1, [
+        NOTE('isj-21', 5, 'minim',    0, 'auto'),
+        NOTE('isj-22', 7, 'crotchet', 0, 'auto'),
+        NOTE('isj-23', 1, 'crotchet', 0, 'auto', null, null, 1),
+      ], []),
+
+      // Bar 3: minim 3 | minim 4 — chord 6m
+      BAR('isj-3', 2, [
+        NOTE('isj-31', 3, 'minim', 0, 'auto'),
+        NOTE('isj-32', 4, 'minim', 0, 'auto'),
+      ], [CHORD(6, 'minor', 0)]),
+
+      // Bar 4: minim 5 | crotchet 7 | crotchet 1(oct+1) — chord continues
+      BAR('isj-4', 3, [
+        NOTE('isj-41', 5, 'minim',    0, 'auto'),
+        NOTE('isj-42', 7, 'crotchet', 0, 'auto'),
+        NOTE('isj-43', 1, 'crotchet', 0, 'auto', null, null, 1),
+      ], []),
+
+      // Bar 5: minim 4 | minim 5 — chord 4
+      BAR('isj-5', 4, [
+        NOTE('isj-51', 4, 'minim', 0, 'auto'),
+        NOTE('isj-52', 5, 'minim', 0, 'auto'),
+      ], [CHORD(4, 'major', 0)]),
+
+      // Bar 6: minim 4 | crotchet 7 | crotchet 1(oct+1) — chord continues
+      BAR('isj-6', 5, [
+        NOTE('isj-61', 4, 'minim',    0, 'auto'),
+        NOTE('isj-62', 7, 'crotchet', 0, 'auto'),
+        NOTE('isj-63', 1, 'crotchet', 0, 'auto', null, null, 1),
+      ], []),
     ],
   },
 };
