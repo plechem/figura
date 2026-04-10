@@ -1066,7 +1066,9 @@ function stemDir(note) {
 // Whole rests hang below attachY; minim rests sit above it.
 function drawRest(svg, x, base, upperY, lowerY, attachY) {
   const midY = attachY ?? (upperY + lowerY) / 2;
-  const LW = 13;  // half-width of ledger line on long rests (rect is 10 each side)
+  const LW = 10;   // half-width of ledger line on long rests
+  const RW =  8;   // half-width of whole/minim rest rectangle
+  const RH =  6;   // height of whole/minim rest rectangle
   if (base === 'whole') {
     // Short ledger line at attachY, drawn first so the rect overlaps its centre
     svg.appendChild(el('line', {
@@ -1075,13 +1077,13 @@ function drawRest(svg, x, base, upperY, lowerY, attachY) {
     }));
     // Filled rectangle hanging below the ledger line
     svg.appendChild(el('rect', {
-      x: x - 10, y: midY, width: 20, height: 8,
+      x: x - RW, y: midY, width: RW * 2, height: RH,
       fill: 'var(--fg)', rx: 1,
     }));
   } else if (base === 'minim') {
     // Filled rectangle sitting above the ledger line
     svg.appendChild(el('rect', {
-      x: x - 10, y: midY - 8, width: 20, height: 8,
+      x: x - RW, y: midY - RH, width: RW * 2, height: RH,
       fill: 'var(--fg)', rx: 1,
     }));
     // Short ledger line at attachY anchoring the bottom edge
@@ -1091,9 +1093,9 @@ function drawRest(svg, x, base, upperY, lowerY, attachY) {
     }));
   } else if (base === 'crotchet' || base === 'quaver' || base === 'semiquaver' || base === 'demisemiquaver') {
     // Render via Bravura (SMuFL) font — avoids path-scaling artefacts entirely.
-    // Centred on midY (= attachY) using dominant-baseline:central so the glyph
-    // sits between the tonic lines on a 2-line staff, or on the centre tonic
-    // line of a 3-line staff — same rule as whole/minim rests.
+    // Centred on midY using dominant-baseline:central.
+    // Font-size scaled to ~55 % of staff span so rests read at the same visual
+    // weight as noteheads rather than dominating the staff.
     const SMUFL = {
       crotchet:       '\uE4E5',
       quaver:         '\uE4E6',
@@ -1103,7 +1105,7 @@ function drawRest(svg, x, base, upperY, lowerY, attachY) {
     svg.appendChild(el('text', {
       x, y: midY,
       'font-family': 'Bravura',
-      'font-size': lowerY - upperY,
+      'font-size': Math.round((lowerY - upperY) * 0.55),
       'text-anchor': 'middle',
       'dominant-baseline': 'central',
       fill: 'var(--fg)',
@@ -1704,10 +1706,16 @@ function render() {
     // Per-bar flex weights (viewBox units): geometry-derived, floor for non-pickup.
     // Since barWidth_i = L.W × fw_i/totalFlex, note scale = containerWidth/L.W
     // is the same across ALL rows and ALL bar widths.
+    // TS bars need a larger minimum width so the note area is no smaller than a
+    // non-TS bar at the same minimum: NOTE_START is (NOTE_START − NOTE_START_NO_TS)
+    // vb further right, so the floor for TS bars must be that much wider.
+    const TS_EXTRA_VB = L.NOTE_START - L.NOTE_START_NO_TS;
     const flexWeights = rowIndices.map((barIdx, p) => {
       const bar = DOC.bars[barIdx];
       const fw  = barNaturalWidthVB(bar, showTSArr[p]);
-      return bar.pickup && bar.pickupBeats != null ? fw : Math.max(minFW, fw);
+      if (bar.pickup && bar.pickupBeats != null) return fw;
+      const floor = showTSArr[p] ? minFW + TS_EXTRA_VB : minFW;
+      return Math.max(floor, fw);
     });
     const totalFlex = flexWeights.reduce((a, b) => a + b, 0);
 
