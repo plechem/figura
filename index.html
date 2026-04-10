@@ -603,23 +603,27 @@ const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
 // Notehead geometry — tilted ellipse like standard notation
 const NH = { RX: 11, RY: 7.5, ANGLE: -30 }; // rotate 30° counter-clockwise (right side up)
 const NH_RAD = NH.ANGLE * Math.PI / 180;
+// Scale factor for parenthesis brackets drawn around hollow notes in numerals mode.
+// Must match the arc radius used in drawParenBrackets.
+const NH_PAREN_SCALE = 1.45;
 
-// Returns the true rightmost (side=+1) or leftmost (side=-1) point on the
-// rotated ellipse — where a vertical stem's outer edge meets the notehead edge.
-function ellipseEdge(cx, cy, side) {
+// Returns the rightmost (side=+1) or leftmost (side=-1) point on the rotated ellipse.
+// scale optionally enlarges the ellipse — used for parenthesis stem attachment.
+function ellipseEdge(cx, cy, side, scale = 1) {
+  const rx = NH.RX * scale, ry = NH.RY * scale;
   const cosA = Math.cos(NH_RAD), sinA = Math.sin(NH_RAD);
-  // Parameter t where dx/dt = 0 on the parametric rotated ellipse
-  const t0 = Math.atan2(-NH.RY * sinA, NH.RX * cosA);
+  const t0 = Math.atan2(-ry * sinA, rx * cosA);
   const t  = side === 1 ? t0 : t0 + Math.PI;
   return {
-    x: cx + NH.RX * Math.cos(t) * cosA - NH.RY * Math.sin(t) * sinA,
-    y: cy + NH.RX * Math.cos(t) * sinA + NH.RY * Math.sin(t) * cosA,
+    x: cx + rx * Math.cos(t) * cosA - ry * Math.sin(t) * sinA,
+    y: cy + rx * Math.cos(t) * sinA + ry * Math.sin(t) * cosA,
   };
 }
 
-// Up stem (dir=-1) attaches at rightmost point; down stem at leftmost
-function stemAttach(x, y, dir) {
-  return ellipseEdge(x, y, dir === -1 ? 1 : -1);
+// Up stem (dir=-1) attaches at rightmost point; down stem at leftmost.
+// scale > 1 shifts the attach point outward for larger notehead shapes.
+function stemAttach(x, y, dir, scale = 1) {
+  return ellipseEdge(x, y, dir === -1 ? 1 : -1, scale);
 }
 
 function stemTipPt(attach, dir) {
@@ -715,67 +719,82 @@ function drawFlag(svg, tipX, tipY, dir) {
   svg.appendChild(el('path', { d, fill: 'var(--fg)' }));
 }
 
+// Draw two partial-ellipse parenthesis brackets (left and right) around a numeral.
+// Each arc is ~160° of a notehead-angle ellipse scaled by NH_PAREN_SCALE, with
+// round linecaps so the tips taper naturally.
+function drawParenBrackets(svg, x, y) {
+  const A = NH.RX * NH_PAREN_SCALE;
+  const B = NH.RY * NH_PAREN_SCALE;
+  const theta = NH.ANGLE * Math.PI / 180;
+  const cosQ = Math.cos(theta), sinQ = Math.sin(theta);
+  const ARC_HALF = 80;  // degrees either side of arc centre → 160° total arc
+  const STEPS    = 12;
+
+  const pt = t_deg => {
+    const t = t_deg * Math.PI / 180;
+    return {
+      x: x + A * Math.cos(t) * cosQ - B * Math.sin(t) * sinQ,
+      y: y + A * Math.cos(t) * sinQ + B * Math.sin(t) * cosQ,
+    };
+  };
+
+  // Left paren: arc centred on t = 180° (left side of ellipse)
+  // Right paren: arc centred on t = 0°  (right side of ellipse)
+  for (const centre of [180, 0]) {
+    const pts = Array.from({ length: STEPS + 1 }, (_, i) =>
+      pt(centre - ARC_HALF + (2 * ARC_HALF / STEPS) * i));
+    const d = pts.map((p, i) =>
+      `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
+    svg.appendChild(el('path', {
+      d, fill: 'none',
+      stroke: 'var(--note-fill)',
+      'stroke-width': '2.2',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+    }));
+  }
+}
+
 function drawNotehead(svg, x, y, duration, label, noteStyle) {
-  const isWhole  = duration === 'whole';
-  const isMinim  = duration === 'minim';
-  const isHollow = isWhole || isMinim;
+  const isWhole     = duration === 'whole';
+  const isMinim     = duration === 'minim';
+  const isHollow    = isWhole || isMinim;
   const useNumerals = noteStyle === 'numerals';
 
-  if (useNumerals && !isHollow) {
-    // ── Numerals mode, filled note: bare large numeral only (no ellipse)
+  if (useNumerals && isHollow) {
+    // ── Numerals mode, hollow note: parenthesis brackets + large numeral
+    drawParenBrackets(svg, x, y);
     svg.appendChild(el('text', {
-      x, y,
-      fill: 'var(--fg)',
+      x, y, fill: 'var(--fg)',
       'font-size': label.length > 2 ? '20' : '26',
-      'font-weight': '700',
-      'font-family': 'system-ui, sans-serif',
-      'text-anchor': 'middle',
-      'dominant-baseline': 'central',
+      'font-weight': '700', 'font-family': 'system-ui, sans-serif',
+      'text-anchor': 'middle', 'dominant-baseline': 'central',
     }, label));
+
+  } else if (useNumerals && !isHollow) {
+    // ── Numerals mode, filled note: bare large numeral, no ellipse
+    svg.appendChild(el('text', {
+      x, y, fill: 'var(--fg)',
+      'font-size': label.length > 2 ? '20' : '26',
+      'font-weight': '700', 'font-family': 'system-ui, sans-serif',
+      'text-anchor': 'middle', 'dominant-baseline': 'central',
+    }, label));
+
   } else {
-    // ── Heads mode (all durations) or Numerals mode (hollow notes only):
-    //    draw the ellipse notehead.
-    // In numerals mode, hollow noteheads are drawn slightly larger so the
-    // outline shell feels proportionate to the bigger numeral inside.
-    const rx = (useNumerals && isHollow) ? NH.RX * 1.25 : NH.RX;
-    const ry = (useNumerals && isHollow) ? NH.RY * 1.25 : NH.RY;
+    // ── Heads mode: standard tilted ellipse notehead + degree label
     svg.appendChild(el('ellipse', {
-      cx: x, cy: y, rx, ry,
+      cx: x, cy: y, rx: NH.RX, ry: NH.RY,
       fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
       stroke: 'var(--note-fill)', 'stroke-width': 1.8,
       transform: `rotate(${NH.ANGLE},${x},${y})`
     }));
-
-    // Degree label — upright, centred on notehead.
-    // In numerals mode hollow notes use the same large size as filled notes,
-    // overflowing the ellipse; a bg-coloured halo stroke separates the numeral
-    // edges from the ellipse outline visually.
-    // NOTE: the halo uses var(--bg) which becomes opaque on PNG export — revisit
-    // when PNG export is implemented (proper SVG mask knockout needed then).
     const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
-    const baseSize = label.length > 2 ? 9 : 11.5;
-    const fontSize = useNumerals ? (label.length > 2 ? 20 : 26) : baseSize;
-    const textAttrs = {
-      x, y,
-      fill: textFill,
-      'font-size': fontSize,
-      'font-weight': '700',
-      'font-family': 'system-ui, sans-serif',
-      'text-anchor': 'middle',
-      'dominant-baseline': 'central',
-    };
-    if (useNumerals && isHollow) {
-      // Halo pass: bg-coloured stroke drawn behind the fill
-      svg.appendChild(el('text', {
-        ...textAttrs,
-        fill: 'var(--bg)',
-        stroke: 'var(--bg)',
-        'stroke-width': '3',
-        'stroke-linejoin': 'round',
-        'paint-order': 'stroke',
-      }, label));
-    }
-    svg.appendChild(el('text', textAttrs, label));
+    svg.appendChild(el('text', {
+      x, y, fill: textFill,
+      'font-size': label.length > 2 ? '9' : '11.5',
+      'font-weight': '700', 'font-family': 'system-ui, sans-serif',
+      'text-anchor': 'middle', 'dominant-baseline': 'central',
+    }, label));
   }
 }
 
@@ -1113,7 +1132,10 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
 
     // Stem (skip for whole notes and beamed notes — beamed stems drawn above)
     if (base !== 'whole' && !isBeamed) {
-      const attach = stemAttach(x, y, dir);
+      // In numerals mode, minim brackets extend to NH_PAREN_SCALE; shift the
+      // stem attach point to the outer edge of the parenthesis arc.
+      const stemScale = (noteStyle === 'numerals' && base === 'minim') ? NH_PAREN_SCALE : 1;
+      const attach = stemAttach(x, y, dir, stemScale);
       const tip    = stemTipPt(attach, dir);
       drawStem(svg, attach.x, attach.y, tip.x, tip.y);
       // Flag for unbeamed quaver/semiquaver

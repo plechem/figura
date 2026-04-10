@@ -1,5 +1,5 @@
-// Figura Service Worker — offline-first cache
-const CACHE = 'figura-v24';
+// Figura Service Worker — network-first (always fresh in dev; offline fallback retained)
+const CACHE = 'figura-v25';
 const ASSETS = [
   './',
   './index.html',
@@ -22,16 +22,17 @@ self.addEventListener('activate', e => {
   );
 });
 
+// Network-first: always try the network so a plain refresh picks up changes.
+// Falls back to cache only when offline.
 self.addEventListener('fetch', e => {
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(res => {
-        if (!res || res.status !== 200 || (res.type !== 'basic' && res.type !== 'cors')) return res;
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      }).catch(() => caches.match('./index.html'));
-    })
+    fetch(e.request).then(res => {
+      if (!res || res.status !== 200 || (res.type !== 'basic' && res.type !== 'cors')) return res;
+      const clone = res.clone();
+      caches.open(CACHE).then(c => c.put(e.request, clone));
+      return res;
+    }).catch(() =>
+      caches.match(e.request).then(cached => cached ?? caches.match('./index.html'))
+    )
   );
 });
