@@ -578,7 +578,7 @@ const SONGS = {
         NOTE('tians-22', 6, 'quaver',   0, 'auto', null, null, -1),
         NOTE('tians-23', 2, 'crotchet', 0, 'auto'),
         NOTE('tians-24', 1, 'crotchet', 0, 'auto'),
-        NOTE('tians-25', 7, 'crotchet', 0, 'auto', null, null, 0, 'flat'),
+        NOTE('tians-25', 7, 'crotchet', 0, 'auto', null, null, -1, 'flat'),
       ], [Object.assign(CHORD(4, 'major', 0), { extensions: [9] })]),
     ],
   },
@@ -657,8 +657,8 @@ function bassToNoteName(key, chordDeg, chordAcc, bass, format) {
   return idx >= 0 ? String(idx + 1) : '?';
 }
 
-function formatChordSymbol(chord, format, key) {
-  const { degree, accidental, quality, extensions, bass } = chord;
+function formatChordRoot(chord, format, key) {
+  const { degree, accidental, quality } = chord;
   const ROMAN = ['','I','II','III','IV','V','VI','VII'];
   const accStr = accidental === 'flat' ? '♭' : accidental === 'sharp' ? '♯' : '';
 
@@ -683,15 +683,70 @@ function formatChordSymbol(chord, format, key) {
     else if (quality === 'diminished') root += '°';
     else if (quality === 'augmented')  root += '+';
   }
+  return root;
+}
 
-  const extStr = (extensions || []).map(e => `(${e})`).join('');
-  let result = root + extStr;
+// Format a single extension item as a string.
+// Numbers → plain ("9", "13"); { num, acc } → parenthesised accidental ("(♭9)");
+// { num, add:true } → "(add9)".
+function formatExtItem(e) {
+  if (typeof e === 'number') return String(e);
+  const acc = e.acc === 'flat' ? '♭' : e.acc === 'sharp' ? '♯' : '';
+  if (e.add) return `(add${e.num})`;
+  return e.acc ? `(${acc}${e.num})` : String(e.num);
+}
 
-  if (bass) {
-    result += '/' + bassToNoteName(key, degree, accidental, bass, format);
+// Render a chord symbol as an SVG text element with a superscript extension tspan.
+// Replaces the old formatChordSymbol string approach.
+function drawChordSymbol(svg, x, y, chord, format, key, fontFamily) {
+  const root    = formatChordRoot(chord, format, key);
+  const extStr  = chord.extensions && chord.extensions.length
+    ? chord.extensions.map(formatExtItem).join('') : null;
+  const bassStr = chord.bass
+    ? '/' + bassToNoteName(key, chord.degree, chord.accidental, chord.bass, format) : null;
+
+  const textEl = document.createElementNS(NS, 'text');
+  textEl.setAttribute('x', x);
+  textEl.setAttribute('y', y);
+  textEl.setAttribute('fill', 'var(--chord)');
+  textEl.setAttribute('font-size', '18');
+  textEl.setAttribute('font-weight', '700');
+  textEl.setAttribute('font-style', 'normal');
+  textEl.setAttribute('font-family', fontFamily);
+  textEl.setAttribute('text-anchor', 'middle');
+
+  // Root (and bass if no extension — keep simple text node)
+  textEl.appendChild(document.createTextNode(root));
+
+  if (extStr) {
+    // Superscript extension: 70 % size, raised 7 px
+    const span = document.createElementNS(NS, 'tspan');
+    span.setAttribute('font-size', '12');
+    span.setAttribute('dy', '-7');
+    span.textContent = extStr;
+    textEl.appendChild(span);
+    // Reset baseline for any bass note that follows
+    if (bassStr) {
+      const reset = document.createElementNS(NS, 'tspan');
+      reset.setAttribute('font-size', '18');
+      reset.setAttribute('dy', '7');
+      reset.textContent = bassStr;
+      textEl.appendChild(reset);
+    }
+  } else if (bassStr) {
+    textEl.appendChild(document.createTextNode(bassStr));
   }
 
-  return result;
+  svg.appendChild(textEl);
+}
+
+// Keep for any callers that still need a plain string (e.g. aria labels in future)
+function formatChordSymbol(chord, format, key) {
+  const root   = formatChordRoot(chord, format, key);
+  const extStr = (chord.extensions || []).map(formatExtItem).join('');
+  const bass   = chord.bass
+    ? '/' + bassToNoteName(key, chord.degree, chord.accidental, chord.bass, format) : '';
+  return root + extStr + bass;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -920,11 +975,28 @@ function drawParenBrackets(svg, x, y, rx = NH.RX, ry = NH.RY, angleDeg = NH.ANGL
   }
 }
 
-function drawNotehead(svg, x, y, duration, label, noteStyle) {
+// Render the accidental as a small raised glyph above-left of the notehead centre.
+// Positioned above to avoid collisions with stems in both up and down directions.
+function drawAccidental(svg, x, y, accidental, large) {
+  const ch = accidental === 'flat' ? '♭' : accidental === 'sharp' ? '♯' : null;
+  if (!ch) return;
+  // large = numerals mode (26 px numeral); small = heads mode (11.5 px label)
+  svg.appendChild(el('text', {
+    x: x - (large ? 9 : 4),
+    y: y - (large ? 12 : 6),
+    fill: 'var(--fg)',
+    'font-size': large ? '14' : '7',
+    'font-weight': '700', 'font-family': 'system-ui, sans-serif',
+    'text-anchor': 'middle', 'dominant-baseline': 'central',
+  }, ch));
+}
+
+function drawNotehead(svg, x, y, duration, degree, accidental, noteStyle) {
   const isWhole     = duration === 'whole';
   const isMinim     = duration === 'minim';
   const isHollow    = isWhole || isMinim;
   const useNumerals = noteStyle === 'numerals';
+  const numStr      = String(degree);
 
   if (useNumerals && isHollow) {
     // ── Numerals mode, hollow note: parenthesis brackets + large numeral
@@ -934,19 +1006,21 @@ function drawNotehead(svg, x, y, duration, label, noteStyle) {
       isWhole ? 0 : NH.ANGLE);
     svg.appendChild(el('text', {
       x, y, fill: 'var(--fg)',
-      'font-size': label.length > 2 ? '20' : '26',
+      'font-size': '26',
       'font-weight': '700', 'font-family': 'system-ui, sans-serif',
       'text-anchor': 'middle', 'dominant-baseline': 'central',
-    }, label));
+    }, numStr));
+    drawAccidental(svg, x, y, accidental, true);
 
   } else if (useNumerals && !isHollow) {
     // ── Numerals mode, filled note: bare large numeral, no ellipse
     svg.appendChild(el('text', {
       x, y, fill: 'var(--fg)',
-      'font-size': label.length > 2 ? '20' : '26',
+      'font-size': '26',
       'font-weight': '700', 'font-family': 'system-ui, sans-serif',
       'text-anchor': 'middle', 'dominant-baseline': 'central',
-    }, label));
+    }, numStr));
+    drawAccidental(svg, x, y, accidental, true);
 
   } else {
     // ── Heads mode: ellipse notehead + degree label
@@ -961,10 +1035,11 @@ function drawNotehead(svg, x, y, duration, label, noteStyle) {
     const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
     svg.appendChild(el('text', {
       x, y, fill: textFill,
-      'font-size': label.length > 2 ? '9' : '11.5',
+      'font-size': '11.5',
       'font-weight': '700', 'font-family': 'system-ui, sans-serif',
       'text-anchor': 'middle', 'dominant-baseline': 'central',
-    }, label));
+    }, numStr));
+    drawAccidental(svg, x, y, accidental, false);
   }
 }
 
@@ -1293,12 +1368,11 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
 
     const y   = nY(n.degree, n.octaveShift ?? 0);
     const dir = stemDir(n);
-    const lbl = degreeLabel(n.degree, n.accidental);
     const base = n.duration.base;
     const isBeamed = beamedIds.has(n.id);
 
     // Notehead
-    drawNotehead(svg, x, y, base, lbl, noteStyle);
+    drawNotehead(svg, x, y, base, n.degree, n.accidental, noteStyle);
 
     // Stem (skip for whole notes and beamed notes — beamed stems drawn above)
     if (base !== 'whole' && !isBeamed) {
@@ -1381,12 +1455,7 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   (bar.chordSymbols || []).forEach(chord => {
     // Optical x for notes in range, linear extrapolation past the last note onset.
     const chordX = beatToOpticalX(chord.beatOffset, laid, NOTE_AREA_LEFT, NOTE_AREA_RIGHT, beatOffset, beatRange);
-    svg.appendChild(el('text', {
-      x: chordX, y: lCHORD_Y,
-      fill: 'var(--chord)',
-      'font-size': '18', 'font-weight': '700', 'font-style': 'normal',
-      'font-family': chordFont, 'text-anchor': 'middle',
-    }, formatChordSymbol(chord, chordFormat, key)));
+    drawChordSymbol(svg, chordX, lCHORD_Y, chord, chordFormat, key, chordFont);
   });
 
   return svg;
