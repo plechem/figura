@@ -601,12 +601,15 @@ const L = {
 const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
 
 // Notehead geometry — tilted ellipse like standard notation
-const NH = { RX: 11, RY: 7.5, ANGLE: -30 }; // rotate 30° counter-clockwise (right side up)
+// Stemmed notehead (quarter, half): tilted ellipse
+const NH = { RX: 11, RY: 7.5, ANGLE: -30 };
 const NH_RAD = NH.ANGLE * Math.PI / 180;
-// Scale factor for parenthesis brackets drawn around hollow notes in numerals mode.
-const NH_PAREN_SCALE = 1.45;   // midpoint radius of bracket arc (× NH radius)
-const NH_PAREN_THICK = 0.22;   // half-thickness scale factor — max at arc centre, 0 at tips
-// Outer edge at centre = NH_PAREN_SCALE + NH_PAREN_THICK; stem attaches there.
+// Whole note: wider, nearly horizontal — a distinct glyph in standard engraving
+const NH_WHOLE = { RX: 13, RY: 6, ANGLE: -6 };
+
+// Parenthesis bracket constants (numerals mode, hollow notes)
+const NH_PAREN_SCALE = 1.45;  // midpoint radius of bracket arc (× NH radius)
+const NH_PAREN_THICK = 0.16;  // half-thickness scale factor — max at centre, 0 at tips
 
 // Returns the rightmost (side=+1) or leftmost (side=-1) point on the rotated ellipse.
 // scale optionally enlarges the ellipse — used for parenthesis stem attachment.
@@ -788,12 +791,14 @@ function drawNotehead(svg, x, y, duration, label, noteStyle) {
     }, label));
 
   } else {
-    // ── Heads mode: standard tilted ellipse notehead + degree label
+    // ── Heads mode: ellipse notehead + degree label
+    // Whole notes use NH_WHOLE (wider, nearly horizontal) matching standard engraving.
+    const nhG = isWhole ? NH_WHOLE : NH;
     svg.appendChild(el('ellipse', {
-      cx: x, cy: y, rx: NH.RX, ry: NH.RY,
+      cx: x, cy: y, rx: nhG.RX, ry: nhG.RY,
       fill: isHollow ? 'var(--bg)' : 'var(--note-fill)',
       stroke: 'var(--note-fill)', 'stroke-width': 1.8,
-      transform: `rotate(${NH.ANGLE},${x},${y})`
+      transform: `rotate(${nhG.ANGLE},${x},${y})`
     }));
     const textFill = isHollow ? 'var(--fg)' : 'var(--note-text)';
     svg.appendChild(el('text', {
@@ -1141,8 +1146,10 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     if (base !== 'whole' && !isBeamed) {
       // In numerals mode, minim brackets extend to NH_PAREN_SCALE; shift the
       // stem attach point to the outer edge of the parenthesis arc.
-      const stemScale = (noteStyle === 'numerals' && base === 'minim')
-        ? NH_PAREN_SCALE + NH_PAREN_THICK : 1;
+      // Bracket outer edge at the ellipseEdge angle ≈ NH_PAREN_SCALE (the taper
+      // reduces thickness there), so using NH_PAREN_SCALE puts the stem's outer
+      // edge flush with the bracket rather than floating beyond it.
+      const stemScale = (noteStyle === 'numerals' && base === 'minim') ? NH_PAREN_SCALE : 1;
       const attach = stemAttach(x, y, dir, stemScale);
       const tip    = stemTipPt(attach, dir);
       drawStem(svg, attach.x, attach.y, tip.x, tip.y);
