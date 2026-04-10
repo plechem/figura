@@ -195,14 +195,7 @@
 <div class="controls">
   <div class="ctrl-group">
     <label for="songSelect">Song</label>
-    <select id="songSelect">
-      <option value="praise">Praise The Lord Forever</option>
-      <option value="waymaker">Way Maker</option>
-      <option value="holyforever">Holy Forever</option>
-      <option value="nolongerslaves">No Longer Slaves</option>
-      <option value="ispeakjesus">I Speak Jesus</option>
-      <option value="thereisanewsong">There Is a New Song</option>
-    </select>
+    <select id="songSelect"></select>
   </div>
   <div class="ctrl-group">
     <label for="keySelect">Key</label>
@@ -304,6 +297,8 @@ const BAR = (id, idx, notes, chords, opts = {}) => {
 
 const SONGS = {
   praise: {
+    id: 'praise',
+    order: 1,
     title: 'Praise The Lord Forever',
     key: 'G',
     keyMode: 'major',
@@ -358,6 +353,8 @@ const SONGS = {
   },
 
   holyforever: {
+    id: 'holyforever',
+    order: 2,
     title: 'Holy Forever',
     key: 'G',
     keyMode: 'major',
@@ -412,6 +409,8 @@ const SONGS = {
   },
 
   waymaker: {
+    id: 'waymaker',
+    order: 3,
     title: 'Way Maker',
     key: 'A',
     keyMode: 'major',
@@ -469,6 +468,8 @@ const SONGS = {
   },
 
   nolongerslaves: {
+    id: 'nolongerslaves',
+    order: 4,
     title: 'No Longer Slaves',
     key: 'E',
     keyMode: 'major',
@@ -515,6 +516,8 @@ const SONGS = {
   },
 
   ispeakjesus: {
+    id: 'ispeakjesus',
+    order: 5,
     title: 'I Speak Jesus',
     key: 'A',
     keyMode: 'major',
@@ -562,6 +565,8 @@ const SONGS = {
   },
 
   thereisanewsong: {
+    id: 'thereisanewsong',
+    order: 6,
     title: 'There Is a New Song',
     key: 'E',
     keyMode: 'major',
@@ -1656,6 +1661,79 @@ function computeRows(bars, containerWidth) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// INDEXEDDB — song persistence layer
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('figura', 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('songs')) {
+        db.createObjectStore('songs', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess  = e => { _db = e.target.result; resolve(_db); };
+    req.onerror    = e => reject(e.target.error);
+  });
+}
+
+function dbGet(store, key) {
+  return new Promise((resolve, reject) => {
+    const tx  = _db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function dbGetAll(store) {
+  return new Promise((resolve, reject) => {
+    const tx  = _db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function dbPut(store, value) {
+  return new Promise((resolve, reject) => {
+    const tx  = _db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).put(value);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+// Runtime song map — populated from IndexedDB at boot, replaces direct SONGS lookups
+let songs = {};
+
+async function seedAndLoadSongs() {
+  // Seed any built-in song that isn't already stored
+  for (const song of Object.values(SONGS)) {
+    const existing = await dbGet('songs', song.id);
+    if (!existing) await dbPut('songs', song);
+  }
+  // Load all songs and index by id, sorted by order field
+  const all = await dbGetAll('songs');
+  all.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  songs = Object.fromEntries(all.map(s => [s.id, s]));
+}
+
+function populateSongSelect() {
+  const sel = document.getElementById('songSelect');
+  sel.innerHTML = '';
+  for (const song of Object.values(songs)) {
+    const opt = document.createElement('option');
+    opt.value       = song.id;
+    opt.textContent = song.title;
+    sel.appendChild(opt);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // APP STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1675,7 +1753,7 @@ function saveState() {
 let state = loadState();
 
 function render() {
-  const DOC = SONGS[state.song];
+  const DOC = songs[state.song];
   const wrap = document.getElementById('scoreWrap');
   wrap.innerHTML = '';
 
@@ -1811,7 +1889,7 @@ function render() {
 document.getElementById('songSelect').addEventListener('change', e => {
   state.song = e.target.value;
   // Also update key selector to match the song's default key
-  const doc = SONGS[state.song];
+  const doc = songs[state.song];
   state.key = doc.key;
   document.getElementById('keySelect').value = doc.key;
   saveState();
@@ -1850,17 +1928,29 @@ document.getElementById('themeBtn').addEventListener('click', () => {
 });
 
 // ── Boot ───────────────────────────────────────────────────────────────────
-// Restore controls to match persisted state before first render
-document.getElementById('songSelect').value      = state.song;
-document.getElementById('keySelect').value       = state.key;
-document.getElementById('formatSelect').value    = state.format;
-document.getElementById('styleSelect').value     = state.noteStyle;
-document.getElementById('chordPosSelect').value  = state.chordPos;
-if (state.theme === 'dark') {
-  document.body.dataset.theme = 'dark';
-  document.getElementById('themeBtn').textContent = 'Light';
+async function init() {
+  await openDB();
+  await seedAndLoadSongs();
+
+  // Populate song dropdown from DB, then restore persisted UI state
+  populateSongSelect();
+
+  // Ensure the persisted song still exists; fall back to first available
+  if (!songs[state.song]) state.song = Object.keys(songs)[0] ?? 'praise';
+  if (!state.key) state.key = songs[state.song]?.key ?? 'G';
+
+  document.getElementById('songSelect').value      = state.song;
+  document.getElementById('keySelect').value       = state.key;
+  document.getElementById('formatSelect').value    = state.format;
+  document.getElementById('styleSelect').value     = state.noteStyle;
+  document.getElementById('chordPosSelect').value  = state.chordPos;
+  if (state.theme === 'dark') {
+    document.body.dataset.theme = 'dark';
+    document.getElementById('themeBtn').textContent = 'Light';
+  }
+  render();
 }
-render();
+init();
 
 // Re-layout when container width changes (portrait↔landscape, resize, etc.)
 let _resizeTimer;
