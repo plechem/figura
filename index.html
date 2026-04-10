@@ -201,6 +201,7 @@
       <option value="holyforever">Holy Forever</option>
       <option value="nolongerslaves">No Longer Slaves</option>
       <option value="ispeakjesus">I Speak Jesus</option>
+      <option value="thereisanewsong">There Is a New Song</option>
     </select>
   </div>
   <div class="ctrl-group">
@@ -262,8 +263,8 @@ function defaultBeamGrouping(ts) {
 }
 
 // Beam fields are no longer stored on notes — the renderer derives them automatically.
-const NOTE = (id, degree, base, dots, stem, tieType, tieGroup, octaveShift = 0) => ({
-  id, type: 'note', degree, accidental: null, octaveShift,
+const NOTE = (id, degree, base, dots, stem, tieType, tieGroup, octaveShift = 0, accidental = null) => ({
+  id, type: 'note', degree, accidental, octaveShift,
   duration: { base, dots: dots ?? 0, tuplet: null },
   tie: { type: tieType ?? null, groupId: tieGroup ?? null },
   stem: stem ?? 'auto', midi: null,
@@ -552,6 +553,35 @@ const SONGS = {
       ], []),
     ],
   },
+
+  thereisanewsong: {
+    title: 'There Is a New Song',
+    key: 'E',
+    keyMode: 'major',
+    defaultTimeSignature: { beats: 4, division: 4 },
+    bars: [
+      // Bar 1: crotchet rest | crotchet 5 | quaver 4 + quaver b3 (beamed) | quaver 1 + quaver 6(-1) (beamed)
+      // Chord: 1(9) at beat 1
+      BAR('tians-1', 0, [
+        REST('tians-1r', 'crotchet', 0),
+        NOTE('tians-11', 5, 'crotchet', 0, 'auto'),
+        NOTE('tians-12', 4, 'quaver',   0, 'auto'),
+        NOTE('tians-13', 3, 'quaver',   0, 'auto', null, null, 0, 'flat'),
+        NOTE('tians-14', 1, 'quaver',   0, 'auto'),
+        NOTE('tians-15', 6, 'quaver',   0, 'auto', null, null, -1),
+      ], [Object.assign(CHORD(1, 'major', 0), { extensions: [9] })]),
+
+      // Bar 2: quaver 1 + quaver 6(-1) (beamed) | crotchet 2 | crotchet 1 | crotchet b7
+      // Chord: 4(9) at beat 1
+      BAR('tians-2', 1, [
+        NOTE('tians-21', 1, 'quaver',   0, 'auto'),
+        NOTE('tians-22', 6, 'quaver',   0, 'auto', null, null, -1),
+        NOTE('tians-23', 2, 'crotchet', 0, 'auto'),
+        NOTE('tians-24', 1, 'crotchet', 0, 'auto'),
+        NOTE('tians-25', 7, 'crotchet', 0, 'auto', null, null, 0, 'flat'),
+      ], [Object.assign(CHORD(4, 'major', 0), { extensions: [9] })]),
+    ],
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -654,7 +684,7 @@ function formatChordSymbol(chord, format, key) {
     else if (quality === 'augmented')  root += '+';
   }
 
-  const extStr = (extensions || []).join('');
+  const extStr = (extensions || []).map(e => `(${e})`).join('');
   let result = root + extStr;
 
   if (bass) {
