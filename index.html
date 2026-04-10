@@ -199,6 +199,7 @@
       <option value="praise">Praise The Lord Forever</option>
       <option value="waymaker">Way Maker</option>
       <option value="holyforever">Holy Forever</option>
+      <option value="nolongerslaves">No Longer Slaves</option>
     </select>
   </div>
   <div class="ctrl-group">
@@ -456,6 +457,52 @@ const SONGS = {
         REST('wm4-r1', 'minim', 0),
       ], [CHORD(6, 'minor', 0)]),
     ]
+  },
+
+  nolongerslaves: {
+    title: 'No Longer Slaves',
+    key: 'E',
+    keyMode: 'major',
+    defaultTimeSignature: { beats: 4, division: 4 },
+    bars: [
+      // Bar 1: minim 1 | minim 2 — chords: 6m beat 1, 5 beat 3
+      BAR('nls-1', 0, [
+        NOTE('nls-11', 1, 'minim', 0, 'auto'),
+        NOTE('nls-12', 2, 'minim', 0, 'auto'),
+      ], [
+        CHORD(6, 'minor', 0),
+        CHORD(5, 'major', 2),
+      ]),
+
+      // Bar 2: crotchet 5 | crotchet 1 | minim 6(-1) — chords: 1 beat 1, 4 beat 3
+      BAR('nls-2', 1, [
+        NOTE('nls-21', 5, 'crotchet', 0, 'auto'),
+        NOTE('nls-22', 1, 'crotchet', 0, 'auto'),
+        NOTE('nls-23', 6, 'minim',    0, 'auto', null, null, -1),
+      ], [
+        CHORD(1, 'major', 0),
+        CHORD(4, 'major', 2),
+      ]),
+
+      // Bar 3: minim 1 | minim 2 — chords: 6m beat 1, 5 beat 3
+      BAR('nls-3', 2, [
+        NOTE('nls-31', 1, 'minim', 0, 'auto'),
+        NOTE('nls-32', 2, 'minim', 0, 'auto'),
+      ], [
+        CHORD(6, 'minor', 0),
+        CHORD(5, 'major', 2),
+      ]),
+
+      // Bar 4: crotchet 3 | crotchet 5 | minim 6 — chords: 1 beat 1, 4 beat 3
+      BAR('nls-4', 3, [
+        NOTE('nls-41', 3, 'crotchet', 0, 'auto'),
+        NOTE('nls-42', 5, 'crotchet', 0, 'auto'),
+        NOTE('nls-43', 6, 'minim',    0, 'auto'),
+      ], [
+        CHORD(1, 'major', 0),
+        CHORD(4, 'major', 2),
+      ]),
+    ],
   },
 };
 
