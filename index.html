@@ -604,8 +604,9 @@ const SPAN = L.LOWER_Y - L.UPPER_Y; // px between reference lines = 76
 const NH = { RX: 11, RY: 7.5, ANGLE: -30 }; // rotate 30° counter-clockwise (right side up)
 const NH_RAD = NH.ANGLE * Math.PI / 180;
 // Scale factor for parenthesis brackets drawn around hollow notes in numerals mode.
-// Must match the arc radius used in drawParenBrackets.
-const NH_PAREN_SCALE = 1.45;
+const NH_PAREN_SCALE = 1.45;   // midpoint radius of bracket arc (× NH radius)
+const NH_PAREN_THICK = 0.22;   // half-thickness scale factor — max at arc centre, 0 at tips
+// Outer edge at centre = NH_PAREN_SCALE + NH_PAREN_THICK; stem attaches there.
 
 // Returns the rightmost (side=+1) or leftmost (side=-1) point on the rotated ellipse.
 // scale optionally enlarges the ellipse — used for parenthesis stem attachment.
@@ -719,39 +720,45 @@ function drawFlag(svg, tipX, tipY, dir) {
   svg.appendChild(el('path', { d, fill: 'var(--fg)' }));
 }
 
-// Draw two partial-ellipse parenthesis brackets (left and right) around a numeral.
-// Each arc is ~160° of a notehead-angle ellipse scaled by NH_PAREN_SCALE, with
-// round linecaps so the tips taper naturally.
+// Draw two filled crescent brackets (left and right) around a hollow numeral.
+// Each bracket is a ~120° arc (⅓ of the ellipse) that tapers to a sharp point
+// at both tips and is widest at its midpoint — like a calligraphic parenthesis.
+// Implemented as a filled path: outer arc forward + inner arc reversed → crescent.
 function drawParenBrackets(svg, x, y) {
-  const A = NH.RX * NH_PAREN_SCALE;
-  const B = NH.RY * NH_PAREN_SCALE;
   const theta = NH.ANGLE * Math.PI / 180;
   const cosQ = Math.cos(theta), sinQ = Math.sin(theta);
-  const ARC_HALF = 80;  // degrees either side of arc centre → 160° total arc
-  const STEPS    = 12;
+  const ARC_HALF = 60;   // degrees — 120° total arc ≈ ⅓ of the ellipse
+  const STEPS    = 16;   // segments per arc — sub-pixel accuracy at this span
 
-  const pt = t_deg => {
+  // Point on the notehead ellipse scaled by `scale`, at parametric angle t_deg
+  const pt = (t_deg, scale) => {
     const t = t_deg * Math.PI / 180;
-    return {
-      x: x + A * Math.cos(t) * cosQ - B * Math.sin(t) * sinQ,
-      y: y + A * Math.cos(t) * sinQ + B * Math.sin(t) * cosQ,
-    };
+    const bx = NH.RX * Math.cos(t) * cosQ - NH.RY * Math.sin(t) * sinQ;
+    const by = NH.RX * Math.cos(t) * sinQ + NH.RY * Math.sin(t) * cosQ;
+    return { x: x + scale * bx, y: y + scale * by };
   };
 
-  // Left paren: arc centred on t = 180° (left side of ellipse)
-  // Right paren: arc centred on t = 0°  (right side of ellipse)
+  // Cos² taper: 1 at arc centre (frac = 0), 0 at tips (frac = 1)
+  const taper = frac => Math.cos(frac * Math.PI / 2) ** 2;
+
   for (const centre of [180, 0]) {
-    const pts = Array.from({ length: STEPS + 1 }, (_, i) =>
-      pt(centre - ARC_HALF + (2 * ARC_HALF / STEPS) * i));
-    const d = pts.map((p, i) =>
-      `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
-    svg.appendChild(el('path', {
-      d, fill: 'none',
-      stroke: 'var(--note-fill)',
-      'stroke-width': '2.2',
-      'stroke-linecap': 'round',
-      'stroke-linejoin': 'round',
-    }));
+    const outer = [], inner = [];
+    for (let i = 0; i <= STEPS; i++) {
+      const t     = centre - ARC_HALF + (2 * ARC_HALF / STEPS) * i;
+      const frac  = Math.abs(2 * i / STEPS - 1);   // 0 at centre, 1 at each tip
+      const thick = NH_PAREN_THICK * taper(frac);
+      outer.push(pt(t, NH_PAREN_SCALE + thick));
+      inner.push(pt(t, NH_PAREN_SCALE - thick));
+    }
+    // Outer arc forward → inner arc reversed → closed crescent with pointed tips
+    const f = p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
+    const d = [
+      `M ${f(outer[0])}`,
+      ...outer.slice(1).map(p => `L ${f(p)}`),
+      ...inner.slice().reverse().map(p => `L ${f(p)}`),
+      'Z',
+    ].join(' ');
+    svg.appendChild(el('path', { d, fill: 'var(--note-fill)' }));
   }
 }
 
@@ -1134,7 +1141,8 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     if (base !== 'whole' && !isBeamed) {
       // In numerals mode, minim brackets extend to NH_PAREN_SCALE; shift the
       // stem attach point to the outer edge of the parenthesis arc.
-      const stemScale = (noteStyle === 'numerals' && base === 'minim') ? NH_PAREN_SCALE : 1;
+      const stemScale = (noteStyle === 'numerals' && base === 'minim')
+        ? NH_PAREN_SCALE + NH_PAREN_THICK : 1;
       const attach = stemAttach(x, y, dir, stemScale);
       const tip    = stemTipPt(attach, dir);
       drawStem(svg, attach.x, attach.y, tip.x, tip.y);
