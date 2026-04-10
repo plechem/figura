@@ -353,12 +353,15 @@ const SONGS = {
     keyMode: 'major',
     defaultTimeSignature: { beats: 4, division: 4 },
     bars: [
-      // Pickup: dotted quaver 3 | dotted quaver 1 | quaver 6(-1, tie→bar1)
-      // 2-beat pickup (right-aligned into bar 1)
+      // Pickup: dotted quaver 3 | semiquaver 1 (tie-start) | quaver 1 (tie-end) | quaver 6(-1, tie→bar1)
+      // Beat group 1 (beat 2): dotted quaver + semiquaver = 1 beat, beamed.
+      // Beat group 2 (beat 3): quaver + quaver = 1 beat, beamed.
+      // The semiquaver–quaver tie on degree 1 joins the two beam groups.
       BAR('hf-p', 0, [
-        NOTE('hfp-1', 3, 'quaver',   1, 'up'),
-        NOTE('hfp-2', 1, 'quaver',   1, 'up'),
-        NOTE('hfp-3', 6, 'quaver',   0, 'up', 'start', 'hf-ta', -1),
+        NOTE('hfp-1', 3, 'quaver',     1, 'up'),
+        NOTE('hfp-2', 1, 'semiquaver', 0, 'up', 'start', 'hf-tc'),
+        NOTE('hfp-3', 1, 'quaver',     0, 'up', 'end',   'hf-tc'),
+        NOTE('hfp-4', 6, 'quaver',     0, 'up', 'start', 'hf-ta', -1),
       ], [], { pickup: true, pickupBeats: 2 }),
 
       // Bar 1: minim 6(-1, tie-end) | crotchet 3 | crotchet 1
@@ -664,7 +667,10 @@ function layoutNotes(notes, ts, areaLeft, areaWidth, startBeat = 0, beatOffset =
 
 // Map an absolute beat to an optical x coordinate by linear interpolation
 // between the nearest laid-out note positions.  Used for chord symbols.
-function beatToOpticalX(targetBeat, laid, areaLeft, areaRight) {
+// When the target beat falls after all note onsets, extrapolate linearly to
+// areaRight so chords over a held note (e.g. two chords on a whole note) are
+// spread across the bar rather than piled on the note's x position.
+function beatToOpticalX(targetBeat, laid, areaLeft, areaRight, beatOffset = 0, beatRange = 4) {
   if (laid.length === 0) return areaLeft;
   if (targetBeat <= laid[0].beat) return laid[0].x;
   for (let i = 0; i < laid.length - 1; i++) {
@@ -674,7 +680,12 @@ function beatToOpticalX(targetBeat, laid, areaLeft, areaRight) {
       return a.x + t * (b.x - a.x);
     }
   }
-  return laid[laid.length - 1].x;
+  // Past the last note onset: extrapolate linearly from the last note's x to areaRight
+  const last   = laid[laid.length - 1];
+  const barEnd = beatOffset + beatRange;
+  if (barEnd <= last.beat) return last.x;
+  const t = (targetBeat - last.beat) / (barEnd - last.beat);
+  return last.x + t * (areaRight - last.x);
 }
 
 // ── Drawing helpers ───────────────────────────────────────────────────────
@@ -1154,8 +1165,8 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
   // ── Chord symbols ──────────────────────────────────────────────────────
   const chordFont = chordFormat === 'roman' ? "'EB Garamond', serif" : "system-ui, sans-serif";
   (bar.chordSymbols || []).forEach(chord => {
-    // Use the same optical x-grid as the notes: interpolate between note positions.
-    const chordX = beatToOpticalX(chord.beatOffset, laid, NOTE_AREA_LEFT, NOTE_AREA_LEFT + NOTE_AREA_W);
+    // Optical x for notes in range, linear extrapolation past the last note onset.
+    const chordX = beatToOpticalX(chord.beatOffset, laid, NOTE_AREA_LEFT, NOTE_AREA_RIGHT, beatOffset, beatRange);
     svg.appendChild(el('text', {
       x: chordX, y: lCHORD_Y,
       fill: 'var(--chord)',
@@ -1219,6 +1230,17 @@ function barNaturalWidthVB(bar, showTS) {
     if (gap <= 0) continue;
     const minGap = willBeFlagged(noteBeats[i]) ? FLAG_GAP : BEAMED_GAP;
     requiredNoteAreaVB = Math.max(requiredNoteAreaVB, minGap * beatRange / gap);
+  }
+
+  // Chord-symbol collision: adjacent chord labels need at least MIN_CHORD_GAP vb between centres.
+  // At 18px font, a chord like "VIm" is ~30px; 48 vb gives comfortable padding.
+  const MIN_CHORD_GAP = 48;
+  const chords = bar.chordSymbols || [];
+  for (let i = 0; i < chords.length - 1; i++) {
+    const beatDiff = (chords[i + 1].beatOffset ?? 0) - (chords[i].beatOffset ?? 0);
+    if (beatDiff > 0) {
+      requiredNoteAreaVB = Math.max(requiredNoteAreaVB, MIN_CHORD_GAP * beatRange / beatDiff);
+    }
   }
 
   return noteAreaLeft + requiredNoteAreaVB + 18;
