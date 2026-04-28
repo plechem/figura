@@ -659,6 +659,7 @@ function updateAuthUI() {
     btn.classList.remove('signed-in');
   }
   renderAuthPanel();
+  updateEditToolbar();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2125,7 +2126,8 @@ async function seedAndLoadSongs() {
   // Seed any built-in song that isn't already stored
   for (const song of Object.values(SONGS)) {
     const existing = await dbGet('songs', song.id);
-    if (!existing) await dbPut('songs', song);
+    if (!existing) await dbPut('songs', { ...song, source: 'builtin' });
+    else if (!existing.source) await dbPut('songs', { ...existing, source: 'builtin' });
   }
   // Load all songs and index by id, sorted by order field
   const all = await dbGetAll('songs');
@@ -2167,6 +2169,14 @@ function render() {
   const DOC = songs[state.song];
   const wrap = document.getElementById('scoreWrap');
   wrap.innerHTML = '';
+  if (!DOC) return;
+
+  if (!DOC.bars.length) {
+    wrap.innerHTML = '<div class="empty-score">No bars yet — use <strong>+ Add bar</strong> above to start composing.</div>';
+    document.getElementById('songTitle').textContent = DOC.title;
+    document.getElementById('keyLabel').textContent  = `Key of ${state.key}`;
+    return;
+  }
 
   const containerWidth = wrap.clientWidth || window.innerWidth || 640;
   const rows = computeRows(DOC.bars, containerWidth);
@@ -2271,6 +2281,15 @@ function render() {
           suppressEnds[barIdx]   ?? new Set(),
           rowH, barWidths[posInRow], 0, state.noteStyle, state.chordPos)
       );
+      if (DOC.source === 'user') {
+        barWrap.classList.add('bar-editable');
+        const editBtn = document.createElement('button');
+        editBtn.className   = 'bar-edit-btn';
+        editBtn.textContent = 'Edit';
+        const capturedIdx = barIdx;
+        editBtn.addEventListener('click', () => openBarEditor(capturedIdx));
+        barWrap.appendChild(editBtn);
+      }
       rowEl.appendChild(barWrap);
     });
 
@@ -2296,14 +2315,243 @@ function render() {
   document.getElementById('keyLabel').textContent = `Key of ${state.key}`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTHORING — note/chord parsers, song CRUD, cloud sync, edit UI
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DUR_PARSE = { w:'whole', h:'minim', q:'crotchet', '8':'quaver', '16':'semiquaver' };
+const DUR_SER   = { whole:'w', minim:'h', crotchet:'q', quaver:'8', semiquaver:'16' };
+
+function parseNoteToken(token, id) {
+  const rest = token.match(/^r(w|h|q|8|16)(\.?)$/);
+  if (rest) return {
+    id, type: 'rest',
+    duration: { base: DUR_PARSE[rest[1]], dots: rest[2] ? 1 : 0, tuplet: null },
+    tie: { type: null, groupId: null },
+  };
+  const note = token.match(/^([b#]?)([1-7])(w|h|q|8|16)(\.?)([',]?)$/);
+  if (!note) return null;
+  const [, acc, deg, dur, dot, oct] = note;
+  return {
+    id, type: 'note',
+    degree: parseInt(deg),
+    accidental: acc === 'b' ? 'flat' : acc === '#' ? 'sharp' : null,
+    octaveShift: oct === "'" ? 1 : oct === ',' ? -1 : 0,
+    duration: { base: DUR_PARSE[dur], dots: dot ? 1 : 0, tuplet: null },
+    tie: { type: null, groupId: null },
+    stem: 'auto', midi: null,
+  };
+}
+
+function parseBarNotes(text, idPrefix) {
+  return text.trim().split(/\s+/).filter(Boolean)
+    .map((tok, i) => parseNoteToken(tok, `${idPrefix}-n${i}`))
+    .filter(Boolean);
+}
+
+function parseChordText(text) {
+  if (!text.trim()) return [];
+  return text.trim().split(/\s+/).filter(Boolean).map(tok => {
+    const m = tok.match(/^([b#]?)([1-7])(m|dim|aug|\+)?(?:@(\d+(?:\.\d+)?))?$/);
+    if (!m) return null;
+    const [, acc, deg, qual, at] = m;
+    return CHORD(
+      parseInt(deg),
+      qual === 'm' ? 'minor' : qual === 'dim' ? 'diminished' : qual === 'aug' || qual === '+' ? 'augmented' : 'major',
+      at != null ? parseFloat(at) : 0,
+      acc === 'b' ? 'flat' : acc === '#' ? 'sharp' : null,
+    );
+  }).filter(Boolean);
+}
+
+function serializeNotes(notes) {
+  return (notes ?? []).map(n => {
+    const d = DUR_SER[n.duration.base] ?? 'q';
+    const dot = n.duration.dots ? '.' : '';
+    if (n.type === 'rest') return `r${d}${dot}`;
+    const acc = n.accidental === 'flat' ? 'b' : n.accidental === 'sharp' ? '#' : '';
+    const oct = n.octaveShift === 1 ? "'" : n.octaveShift === -1 ? ',' : '';
+    return `${acc}${n.degree}${d}${dot}${oct}`;
+  }).join(' ');
+}
+
+function serializeChords(chords) {
+  if (!chords?.length) return '';
+  return chords.map(c => {
+    const acc  = c.accidental === 'flat' ? 'b' : c.accidental === 'sharp' ? '#' : '';
+    const qual = c.quality === 'minor' ? 'm' : c.quality === 'diminished' ? 'dim' : c.quality === 'augmented' ? '+' : '';
+    return `${acc}${c.degree}${qual}@${c.beatOffset ?? 0}`;
+  }).join(' ');
+}
+
+function makeBar(song, barIdx, notes, chords) {
+  const ts = song.defaultTimeSignature ?? { beats: 4, division: 4 };
+  return {
+    id: `${song.id}-b${barIdx}`,
+    index: barIdx,
+    timeSignature: ts,
+    beamGrouping: defaultBeamGrouping(ts),
+    chordSymbols: chords,
+    notes,
+    pickup: false,
+    pickupBeats: null,
+    displayOptions: { showReferenceLines: true, referenceLineStyle: 'dashed', size: 1.0 },
+  };
+}
+
+// ── Cloud sync ────────────────────────────────────────────────────────────
+
+async function syncSongToCloud(song) {
+  if (!currentUser) return;
+  await sb.from('songs').upsert({
+    id: song.id,
+    user_id: currentUser.id,
+    data: song,
+    is_public: false,
+  });
+}
+
+async function syncFromCloud() {
+  if (!currentUser) return;
+  const { data, error } = await sb.from('songs').select('*').eq('user_id', currentUser.id);
+  if (error || !data?.length) return;
+  let changed = false;
+  for (const row of data) {
+    const existing = await dbGet('songs', row.id);
+    if (!existing) { await dbPut('songs', { ...row.data, sync_status: 'synced' }); changed = true; }
+  }
+  if (!changed) return;
+  const all = await dbGetAll('songs');
+  all.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  songs = Object.fromEntries(all.map(s => [s.id, s]));
+  populateSongSelect();
+  render();
+}
+
+// ── Edit toolbar ──────────────────────────────────────────────────────────
+
+function updateEditToolbar() {
+  const toolbar = document.getElementById('editToolbar');
+  if (!currentUser) { toolbar.innerHTML = ''; return; }
+  const isUserSong = songs[state.song]?.source === 'user';
+  toolbar.innerHTML =
+    `<button class="edit-btn" id="newSongBtn">+ New song</button>` +
+    (isUserSong ? `<button class="edit-btn" id="addBarBtn">+ Add bar</button>` : '');
+  document.getElementById('newSongBtn').addEventListener('click', () =>
+    document.getElementById('newSongModal').classList.add('open'));
+  if (isUserSong) {
+    document.getElementById('addBarBtn').addEventListener('click', () => openBarEditor(null));
+  }
+}
+
+// ── New song modal ────────────────────────────────────────────────────────
+
+document.getElementById('cancelNewSong').addEventListener('click', () =>
+  document.getElementById('newSongModal').classList.remove('open'));
+
+document.getElementById('newSongModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
+document.getElementById('confirmNewSong').addEventListener('click', async () => {
+  const title = document.getElementById('nsTitle').value.trim();
+  if (!title) { document.getElementById('nsTitle').focus(); return; }
+  const key      = document.getElementById('nsKey').value;
+  const beats    = parseInt(document.getElementById('nsBeats').value);
+  const division = parseInt(document.getElementById('nsDiv').value);
+  const id = (crypto.randomUUID ?? (() => `song-${Date.now().toString(36)}`))();
+  const song = {
+    id, order: Date.now(), title, key, keyMode: 'major',
+    source: 'user', sync_status: 'pending',
+    defaultTimeSignature: { beats, division },
+    bars: [],
+  };
+  await dbPut('songs', song);
+  songs[id] = song;
+  populateSongSelect();
+  state.song = id;
+  state.key  = key;
+  document.getElementById('songSelect').value = id;
+  document.getElementById('keySelect').value  = key;
+  saveState();
+  document.getElementById('newSongModal').classList.remove('open');
+  document.getElementById('nsTitle').value = '';
+  updateEditToolbar();
+  render();
+  await syncSongToCloud(song);
+});
+
+// ── Bar editor ────────────────────────────────────────────────────────────
+
+let editingBarIdx = null;
+
+function openBarEditor(barIdx) {
+  editingBarIdx = barIdx;
+  const song  = songs[state.song];
+  const isNew = barIdx == null;
+  document.getElementById('barEditorTitle').textContent = isNew ? 'New bar' : `Edit bar ${barIdx + 1}`;
+  document.getElementById('deleteBarBtn').style.display = isNew ? 'none' : '';
+  if (!isNew && song.bars[barIdx]) {
+    const bar = song.bars[barIdx];
+    document.getElementById('barNoteInput').value  = serializeNotes(bar.notes);
+    document.getElementById('barChordInput').value = serializeChords(bar.chordSymbols);
+  } else {
+    document.getElementById('barNoteInput').value  = '';
+    document.getElementById('barChordInput').value = '';
+  }
+  document.getElementById('barEditorPanel').classList.add('open');
+  document.getElementById('barNoteInput').focus();
+}
+
+function closeBarEditor() {
+  document.getElementById('barEditorPanel').classList.remove('open');
+  editingBarIdx = null;
+}
+
+document.getElementById('closeBarEditor').addEventListener('click', closeBarEditor);
+
+document.getElementById('saveBarBtn').addEventListener('click', async () => {
+  const song = songs[state.song];
+  if (!song || song.source === 'builtin') return;
+  const notesText  = document.getElementById('barNoteInput').value;
+  const chordsText = document.getElementById('barChordInput').value;
+  const barIdx = editingBarIdx ?? song.bars.length;
+  const bar    = makeBar(song, barIdx, parseBarNotes(notesText, `${song.id}-b${barIdx}`), parseChordText(chordsText));
+  if (editingBarIdx != null) {
+    song.bars[editingBarIdx] = bar;
+  } else {
+    song.bars.push(bar);
+  }
+  song.sync_status = 'pending';
+  await dbPut('songs', song);
+  songs[state.song] = song;
+  closeBarEditor();
+  render();
+  await syncSongToCloud(song);
+});
+
+document.getElementById('deleteBarBtn').addEventListener('click', async () => {
+  const song = songs[state.song];
+  if (!song || song.source === 'builtin' || editingBarIdx == null) return;
+  if (!confirm(`Delete bar ${editingBarIdx + 1}?`)) return;
+  song.bars.splice(editingBarIdx, 1);
+  song.bars.forEach((b, i) => { b.index = i; b.id = `${song.id}-b${i}`; });
+  song.sync_status = 'pending';
+  await dbPut('songs', song);
+  songs[state.song] = song;
+  closeBarEditor();
+  render();
+  await syncSongToCloud(song);
+});
+
 // ── Controls ───────────────────────────────────────────────────────────────
 document.getElementById('songSelect').addEventListener('change', e => {
   state.song = e.target.value;
-  // Also update key selector to match the song's default key
   const doc = songs[state.song];
   state.key = doc.key;
   document.getElementById('keySelect').value = doc.key;
   saveState();
+  updateEditToolbar();
   render();
 });
 
@@ -2347,6 +2595,7 @@ async function init() {
   sb.auth.onAuthStateChange((_event, session) => {
     currentUser = session?.user ?? null;
     updateAuthUI();
+    if (session) syncFromCloud();
   });
 
   // Account button toggles auth panel open/closed
