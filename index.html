@@ -589,6 +589,7 @@
   </div>
   <div class="syntax-hint">
     <strong>Notes:</strong> degree 1–7 + duration w h q 8 16 · prefix b/# for flat/sharp · suffix ′ or , for octave up/down · suffix . for dot · rq r8 rh rw for rests<br>
+    <strong>Ties:</strong> suffix ~ to start a tie · prefix ~ to end one · <code>5q~</code> then <code>~5h</code> in next bar · <code>~5q~</code> for continue<br>
     <strong>Chords:</strong> degree + optional m/dim/+ quality · @beat for position · e.g. <code>4</code> &nbsp; <code>4m 5@2</code> &nbsp; <code>b7@3</code>
   </div>
 </div>
@@ -2329,16 +2330,17 @@ function parseNoteToken(token, id) {
     duration: { base: DUR_PARSE[rest[1]], dots: rest[2] ? 1 : 0, tuplet: null },
     tie: { type: null, groupId: null },
   };
-  const note = token.match(/^([b#]?)([1-7])(w|h|q|8|16)(\.?)([',]?)$/);
+  const note = token.match(/^(~?)([b#]?)([1-7])(w|h|q|8|16)(\.?)([',]?)(~?)$/);
   if (!note) return null;
-  const [, acc, deg, dur, dot, oct] = note;
+  const [, tieEnd, acc, deg, dur, dot, oct, tieStart] = note;
+  const tieType = tieEnd && tieStart ? 'continue' : tieEnd ? 'end' : tieStart ? 'start' : null;
   return {
     id, type: 'note',
     degree: parseInt(deg),
     accidental: acc === 'b' ? 'flat' : acc === '#' ? 'sharp' : null,
     octaveShift: oct === "'" ? 1 : oct === ',' ? -1 : 0,
     duration: { base: DUR_PARSE[dur], dots: dot ? 1 : 0, tuplet: null },
-    tie: { type: null, groupId: null },
+    tie: { type: tieType, groupId: null },
     stem: 'auto', midi: null,
   };
 }
@@ -2369,9 +2371,11 @@ function serializeNotes(notes) {
     const d = DUR_SER[n.duration.base] ?? 'q';
     const dot = n.duration.dots ? '.' : '';
     if (n.type === 'rest') return `r${d}${dot}`;
-    const acc = n.accidental === 'flat' ? 'b' : n.accidental === 'sharp' ? '#' : '';
-    const oct = n.octaveShift === 1 ? "'" : n.octaveShift === -1 ? ',' : '';
-    return `${acc}${n.degree}${d}${dot}${oct}`;
+    const acc      = n.accidental === 'flat' ? 'b' : n.accidental === 'sharp' ? '#' : '';
+    const oct      = n.octaveShift === 1 ? "'" : n.octaveShift === -1 ? ',' : '';
+    const tieEnd   = (n.tie?.type === 'end'   || n.tie?.type === 'continue') ? '~' : '';
+    const tieStart = (n.tie?.type === 'start' || n.tie?.type === 'continue') ? '~' : '';
+    return `${tieEnd}${acc}${n.degree}${d}${dot}${oct}${tieStart}`;
   }).join(' ');
 }
 
@@ -2397,6 +2401,36 @@ function makeBar(song, barIdx, notes, chords) {
     pickupBeats: null,
     displayOptions: { showReferenceLines: true, referenceLineStyle: 'dashed', size: 1.0 },
   };
+}
+
+function assignTieGroupIds(song, barIdx) {
+  const bar     = song.bars[barIdx];
+  const prevBar = barIdx > 0 ? song.bars[barIdx - 1] : null;
+  // Tie-start/continue notes in the previous bar that need to be continued here
+  const prevPending = (prevBar?.notes ?? [])
+    .filter(n => n.tie?.type === 'start' || n.tie?.type === 'continue');
+  let prevIdx = 0, localCount = 0;
+  // First pass: give every tie-start/continue its own groupId
+  bar.notes.forEach(n => {
+    if (n.tie?.type === 'start' || n.tie?.type === 'continue') {
+      if (!n.tie.groupId) n.tie.groupId = `${bar.id}-t${localCount++}`;
+    }
+  });
+  // Second pass: match tie-end/continue to previous bar or nearest same-degree start in this bar
+  bar.notes.forEach((n, i) => {
+    if (n.tie?.type !== 'end' && n.tie?.type !== 'continue') return;
+    if (n.tie.groupId) return; // already assigned (continue nodes set in first pass)
+    if (prevPending[prevIdx]) {
+      n.tie.groupId = prevPending[prevIdx++].tie.groupId;
+    } else {
+      for (let j = i - 1; j >= 0; j--) {
+        const m = bar.notes[j];
+        if ((m.tie?.type === 'start' || m.tie?.type === 'continue') && m.degree === n.degree) {
+          n.tie.groupId = m.tie.groupId; break;
+        }
+      }
+    }
+  });
 }
 
 // ── Cloud sync ────────────────────────────────────────────────────────────
@@ -2522,6 +2556,8 @@ document.getElementById('saveBarBtn').addEventListener('click', async () => {
   } else {
     song.bars.push(bar);
   }
+  assignTieGroupIds(song, barIdx);
+  if (barIdx + 1 < song.bars.length) assignTieGroupIds(song, barIdx + 1);
   song.sync_status = 'pending';
   await dbPut('songs', song);
   songs[state.song] = song;
