@@ -2406,9 +2406,21 @@ function makeBar(song, barIdx, notes, chords) {
 function assignTieGroupIds(song, barIdx) {
   const bar     = song.bars[barIdx];
   const prevBar = barIdx > 0 ? song.bars[barIdx - 1] : null;
-  // Tie-start/continue notes in the previous bar that need to be continued here
-  const prevPending = (prevBar?.notes ?? [])
-    .filter(n => n.tie?.type === 'start' || n.tie?.type === 'continue');
+  // A tie crosses the barline only if the LAST event on that groupId in the
+  // previous bar was 'start' or 'continue' — meaning it was never resolved there.
+  // (A within-bar tie like 416~ ~48 has groupId t0 appearing as 'start' then 'end',
+  // so its last type is 'end' and it is correctly excluded from prevPending.)
+  const groupLastType = {};
+  const groupOrder    = [];
+  (prevBar?.notes ?? []).forEach(n => {
+    if (!n.tie?.groupId) return;
+    const gid = n.tie.groupId;
+    if (!(gid in groupLastType)) groupOrder.push(gid);
+    groupLastType[gid] = n.tie.type;
+  });
+  const prevPending = groupOrder
+    .filter(gid => groupLastType[gid] === 'start' || groupLastType[gid] === 'continue')
+    .map(gid => ({ tie: { groupId: gid } }));
   let prevIdx = 0, localCount = 0;
   // First pass: give every tie-start/continue its own groupId
   bar.notes.forEach(n => {
@@ -2419,7 +2431,7 @@ function assignTieGroupIds(song, barIdx) {
   // Second pass: match tie-end/continue to previous bar or nearest same-degree start in this bar
   bar.notes.forEach((n, i) => {
     if (n.tie?.type !== 'end' && n.tie?.type !== 'continue') return;
-    if (n.tie.groupId) return; // already assigned (continue nodes set in first pass)
+    if (n.tie.groupId) return;
     if (prevPending[prevIdx]) {
       n.tie.groupId = prevPending[prevIdx++].tie.groupId;
     } else {
