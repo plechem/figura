@@ -2459,7 +2459,7 @@ document.getElementById('confirmNewSong').addEventListener('click', async () => 
   const key      = document.getElementById('nsKey').value;
   const beats    = parseInt(document.getElementById('nsBeats').value);
   const division = parseInt(document.getElementById('nsDiv').value);
-  const id = (crypto.randomUUID ?? (() => `song-${Date.now().toString(36)}`))();
+  const id = crypto.randomUUID ? crypto.randomUUID() : `song-${Date.now().toString(36)}`;
   const song = {
     id, order: Date.now(), title, key, keyMode: 'major',
     source: 'user', sync_status: 'pending',
