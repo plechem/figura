@@ -1929,8 +1929,13 @@ function barNaturalWidthVB(bar, showTS) {
     return noteBeats.filter(m => isBeamable(m.n) && m.beat >= win.start && m.beat < win.end).length === 1;
   }
 
-  // Find the note pair that demands the most horizontal space
-  let requiredNoteAreaVB = BEAMED_GAP; // baseline for single-note bars
+  // Find the note pair that demands the most horizontal space.
+  // Whole-note-only bars need a larger floor: the paren bracket extends ≈21 vb
+  // from the note centre and only 22 vb of note area leaves just 4 vb before
+  // the barline — far too tight, especially with the double final barline.
+  const WHOLE_NOTE_AREA = 60;
+  const soleWholeNote   = noteBeats.length === 1 && noteBeats[0].n.duration.base === 'whole';
+  let requiredNoteAreaVB = soleWholeNote ? WHOLE_NOTE_AREA : BEAMED_GAP;
   for (let i = 0; i < noteBeats.length - 1; i++) {
     const gap = noteBeats[i + 1].beat - noteBeats[i].beat;
     if (gap <= 0) continue;
