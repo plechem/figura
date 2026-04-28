@@ -190,6 +190,227 @@
     .auth-sent { background: color-mix(in srgb, var(--accent) 12%, var(--bg)); color: var(--accent); }
     .auth-error { background: color-mix(in srgb, #e55 12%, var(--bg)); color: #e55; }
 
+    /* ── Edit toolbar ─────────────────────────────────────────────────── */
+    .edit-toolbar {
+      width: 100%;
+      max-width: 680px;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      min-height: 0;
+    }
+    .edit-btn {
+      background: var(--ctrl-bg);
+      color: var(--fg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 5px;
+      padding: 0.28rem 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: border-color 0.15s;
+    }
+    .edit-btn:hover { border-color: var(--accent); }
+
+    /* ── Bar edit overlay ─────────────────────────────────────────────── */
+    .bar-editable { position: relative; }
+    .bar-edit-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: var(--ctrl-bg);
+      color: var(--fg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 2;
+    }
+    .bar-editable:hover .bar-edit-btn { opacity: 0.85; }
+
+    /* ── Empty score ──────────────────────────────────────────────────── */
+    .empty-score {
+      padding: 3rem 2rem;
+      text-align: center;
+      font-size: 0.88rem;
+      opacity: 0.4;
+      line-height: 1.7;
+    }
+
+    /* ── Modal ────────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--bg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      width: min(420px, 90vw);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      transform: translateY(8px);
+      transition: transform 0.15s;
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 1rem; letter-spacing: 0.04em; }
+    .modal-field {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.7rem;
+    }
+    .modal-field > label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.5;
+      width: 3.5rem;
+      flex-shrink: 0;
+    }
+    .modal-field input[type="text"],
+    .modal-field select {
+      flex: 1;
+      background: var(--ctrl-bg);
+      color: var(--fg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 5px;
+      padding: 0.32rem 0.6rem;
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .modal-field input[type="text"]:focus,
+    .modal-field select:focus { border-color: var(--accent); }
+    .modal-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      margin-top: 1.2rem;
+    }
+    .modal-btn {
+      background: var(--ctrl-bg);
+      color: var(--fg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 5px;
+      padding: 0.38rem 0.9rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .modal-btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+    .modal-btn:not(.primary):hover { border-color: var(--accent); }
+
+    /* ── Bar editor panel ─────────────────────────────────────────────── */
+    .bar-editor-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg);
+      border-top: 2px solid var(--ctrl-border);
+      padding: 1rem 1.5rem 1.5rem;
+      z-index: 50;
+      transform: translateY(100%);
+      transition: transform 0.2s ease;
+      box-shadow: 0 -4px 24px var(--shadow);
+    }
+    .bar-editor-panel.open { transform: translateY(0); }
+    .bar-editor-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.9rem;
+    }
+    .bar-editor-header span {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.5;
+    }
+    .bar-editor-close {
+      background: none;
+      border: none;
+      color: var(--fg);
+      font-size: 1.3rem;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0.4;
+      padding: 0 4px;
+    }
+    .bar-editor-close:hover { opacity: 1; }
+    .bar-editor-field {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.55rem;
+    }
+    .bar-editor-field > label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.5;
+      width: 3.5rem;
+      flex-shrink: 0;
+    }
+    .bar-editor-field input {
+      flex: 1;
+      background: var(--ctrl-bg);
+      color: var(--fg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 5px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.9rem;
+      font-family: monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .bar-editor-field input:focus { border-color: var(--accent); }
+    .bar-editor-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: 0.8rem;
+    }
+    .delete-btn {
+      background: none;
+      color: #e55;
+      border: 1px solid #e55;
+      border-radius: 5px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-right: auto;
+    }
+    .delete-btn:hover { background: color-mix(in srgb, #e55 10%, var(--bg)); }
+    .syntax-hint {
+      margin-top: 0.75rem;
+      font-size: 0.7rem;
+      opacity: 0.4;
+      line-height: 1.6;
+    }
+    .syntax-hint code { font-family: monospace; }
+
     /* ── Score ────────────────────────────────────────────────────────── */
     .song-meta {
       width: 100%;
@@ -302,6 +523,7 @@
     </select>
   </div>
 </div>
+<div class="edit-toolbar" id="editToolbar"></div>
 
 <div class="song-meta">
   <span class="song-title" id="songTitle">Praise The Lord Forever</span>
@@ -309,6 +531,67 @@
 </div>
 
 <div class="score-wrap" id="scoreWrap"></div>
+
+<div class="modal-overlay" id="newSongModal">
+  <div class="modal">
+    <h3>New song</h3>
+    <div class="modal-field">
+      <label>Title</label>
+      <input type="text" id="nsTitle" placeholder="Song title">
+    </div>
+    <div class="modal-field">
+      <label>Key</label>
+      <select id="nsKey">
+        <option value="C">C</option><option value="Db">D♭</option>
+        <option value="D">D</option><option value="Eb">E♭</option>
+        <option value="E">E</option><option value="F">F</option>
+        <option value="Gb">G♭</option><option value="G" selected>G</option>
+        <option value="Ab">A♭</option><option value="A">A</option>
+        <option value="Bb">B♭</option><option value="B">B</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Time</label>
+      <select id="nsBeats">
+        <option value="2">2</option><option value="3">3</option>
+        <option value="4" selected>4</option><option value="6">6</option>
+      </select>
+      <span style="opacity:0.4;padding:0 0.2rem">/</span>
+      <select id="nsDiv" style="flex:0 0 auto;width:4rem">
+        <option value="4" selected>4</option><option value="8">8</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn" id="cancelNewSong">Cancel</button>
+      <button class="modal-btn primary" id="confirmNewSong">Create song</button>
+    </div>
+  </div>
+</div>
+
+<div class="bar-editor-panel" id="barEditorPanel">
+  <div class="bar-editor-header">
+    <span id="barEditorTitle">Edit bar</span>
+    <button class="bar-editor-close" id="closeBarEditor">×</button>
+  </div>
+  <div class="bar-editor-field">
+    <label>Notes</label>
+    <input type="text" id="barNoteInput" spellcheck="false" autocomplete="off"
+      placeholder="5q 4q b3q 18 68,">
+  </div>
+  <div class="bar-editor-field">
+    <label>Chords</label>
+    <input type="text" id="barChordInput" spellcheck="false" autocomplete="off"
+      placeholder="4  or  4 5@2  or  4m@0 b7@3">
+  </div>
+  <div class="bar-editor-actions">
+    <button class="delete-btn" id="deleteBarBtn">Delete bar</button>
+    <button class="modal-btn primary" id="saveBarBtn">Save</button>
+  </div>
+  <div class="syntax-hint">
+    <strong>Notes:</strong> degree 1–7 + duration w h q 8 16 · prefix b/# for flat/sharp · suffix ′ or , for octave up/down · suffix . for dot · rq r8 rh rw for rests<br>
+    <strong>Chords:</strong> degree + optional m/dim/+ quality · @beat for position · e.g. <code>4</code> &nbsp; <code>4m 5@2</code> &nbsp; <code>b7@3</code>
+  </div>
+</div>
 
 <footer>Figura · Scale Degree Notation v0.2 · PoC</footer>
 
