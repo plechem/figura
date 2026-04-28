@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@800&display=swap" rel="stylesheet">
   <meta name="theme-color" content="#1a1a2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
     @font-face {
       font-family: 'Bravura';
@@ -114,6 +115,12 @@
     }
     select:focus { border-color: var(--accent); }
 
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-left: auto;
+      align-items: center;
+    }
     .theme-btn {
       background: var(--ctrl-bg);
       color: var(--fg);
@@ -125,9 +132,63 @@
       cursor: pointer;
       letter-spacing: 0.04em;
       transition: border-color 0.15s;
-      margin-left: auto;
     }
     .theme-btn:hover { border-color: var(--accent); }
+    .theme-btn.signed-in { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Auth panel ───────────────────────────────────────────────────── */
+    .auth-panel {
+      width: 100%;
+      max-width: 680px;
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.2s ease, margin-bottom 0.2s ease;
+    }
+    .auth-panel.open {
+      max-height: 120px;
+      margin-bottom: 0.75rem;
+    }
+    .auth-form, .auth-info {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.6rem 0.75rem;
+      background: var(--ctrl-bg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 7px;
+    }
+    .auth-form input[type="email"] {
+      flex: 1;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 5px;
+      padding: 0.3rem 0.6rem;
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .auth-form input[type="email"]:focus { border-color: var(--accent); }
+    .auth-action-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 0.32rem 0.7rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .auth-action-btn:disabled { opacity: 0.5; cursor: default; }
+    .auth-email { font-size: 0.85rem; opacity: 0.7; flex: 1; }
+    .auth-message {
+      padding: 0.6rem 0.75rem;
+      border-radius: 7px;
+      font-size: 0.85rem;
+    }
+    .auth-sent { background: color-mix(in srgb, var(--accent) 12%, var(--bg)); color: var(--accent); }
+    .auth-error { background: color-mix(in srgb, #e55 12%, var(--bg)); color: #e55; }
 
     /* ── Score ────────────────────────────────────────────────────────── */
     .song-meta {
@@ -189,8 +250,12 @@
 
 <header>
   <div class="wordmark">Fi<span>g</span>ura</div>
-  <button class="theme-btn" id="themeBtn">Dark</button>
+  <div class="header-actions">
+    <button class="theme-btn" id="accountBtn">Sign in</button>
+    <button class="theme-btn" id="themeBtn">Dark</button>
+  </div>
 </header>
+<div class="auth-panel" id="authPanel"></div>
 
 <div class="controls">
   <div class="ctrl-group">
@@ -249,6 +314,69 @@
 
 <script>
 'use strict';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUPABASE — auth and cloud sync
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SUPABASE_URL = 'https://nxkarbupusiauftoobmg.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_x7HiStnQENA3453VqdNNbg_jImFISD0';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentUser = null;
+
+async function signInWithMagicLink(email) {
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.href },
+  });
+  return error;
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+}
+
+function renderAuthPanel() {
+  const panel = document.getElementById('authPanel');
+  if (currentUser) {
+    panel.innerHTML = `
+      <div class="auth-info">
+        <span class="auth-email">${currentUser.email}</span>
+        <button id="signOutBtn" class="auth-action-btn">Sign out</button>
+      </div>`;
+    document.getElementById('signOutBtn').addEventListener('click', signOut);
+  } else {
+    panel.innerHTML = `
+      <div class="auth-form">
+        <input type="email" id="authEmail" placeholder="your@email.com" autocomplete="email">
+        <button id="sendLinkBtn" class="auth-action-btn">Send magic link</button>
+      </div>`;
+    document.getElementById('sendLinkBtn').addEventListener('click', async () => {
+      const email = document.getElementById('authEmail').value.trim();
+      if (!email) return;
+      const btn = document.getElementById('sendLinkBtn');
+      btn.textContent = 'Sending…';
+      btn.disabled = true;
+      const error = await signInWithMagicLink(email);
+      panel.innerHTML = error
+        ? `<div class="auth-message auth-error">Error: ${error.message}</div>`
+        : `<div class="auth-message auth-sent">Magic link sent — check your email ✓</div>`;
+    });
+  }
+}
+
+function updateAuthUI() {
+  const btn = document.getElementById('accountBtn');
+  if (currentUser) {
+    btn.textContent = currentUser.email.split('@')[0];
+    btn.classList.add('signed-in');
+  } else {
+    btn.textContent = 'Sign in';
+    btn.classList.remove('signed-in');
+  }
+  renderAuthPanel();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DATA
@@ -1931,6 +2059,20 @@ document.getElementById('themeBtn').addEventListener('click', () => {
 async function init() {
   await openDB();
   await seedAndLoadSongs();
+
+  // Auth state — fires immediately with existing session, then on every change
+  sb.auth.onAuthStateChange((_event, session) => {
+    currentUser = session?.user ?? null;
+    updateAuthUI();
+  });
+
+  // Account button toggles auth panel open/closed
+  document.getElementById('accountBtn').addEventListener('click', () => {
+    const panel = document.getElementById('authPanel');
+    const opening = !panel.classList.contains('open');
+    panel.classList.toggle('open');
+    if (opening) renderAuthPanel();
+  });
 
   // Populate song dropdown from DB, then restore persisted UI state
   populateSongSelect();
