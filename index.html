@@ -3200,20 +3200,24 @@ function nipCommit(degree, octaveShift, isRest = false) {
         _nipPushUndo();
         const autoOct  = octaveShift !== 0 ? octaveShift : _nipAutoOctave(song, degree);
         const wasStart = note.tie?.type === 'start' || note.tie?.type === 'continue';
+        const wasEnd   = note.tie?.type === 'end'   || note.tie?.type === 'continue';
         _nipDisconnectTie(song, NIP.barIdx, NIP.noteIdx, note);
         note.degree      = degree;
         note.accidental  = NIP.accidental ?? null;
         note.octaveShift = autoOct;
         _nipTryLinkTieEnd(song, NIP.barIdx, NIP.noteIdx, note);
-        if (wasStart && !note.tie?.type) {
-          // Was a tie-start: try to find a new forward target with the new pitch
-          const match = _nipFindNextPitchMatch(song, NIP.barIdx, NIP.noteIdx, degree, autoOct);
-          if (match) {
-            const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+        if (!note.tie?.type && (wasStart || wasEnd)) {
+          const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+          if (wasStart) {
             note.tie = { type: 'start', groupId: newGid };
-            match.note.tie = match.note.tie?.type === 'start'
-              ? { type: 'continue', groupId: newGid }
-              : { type: 'end',      groupId: newGid };
+            const match = _nipFindNextPitchMatch(song, NIP.barIdx, NIP.noteIdx, degree, autoOct);
+            if (match) {
+              match.note.tie = match.note.tie?.type === 'start'
+                ? { type: 'continue', groupId: newGid }
+                : { type: 'end',      groupId: newGid };
+            }
+          } else {
+            note.tie = { type: 'end', groupId: newGid };
           }
         }
         NIP.accidental   = null;
@@ -3382,19 +3386,24 @@ function nipShiftOctave(dir) {
   _nipPushUndo();
   const pos = _nipGetActiveNotePos(song);
   const wasStart = note.tie?.type === 'start' || note.tie?.type === 'continue';
+  const wasEnd   = note.tie?.type === 'end'   || note.tie?.type === 'continue';
   if (pos) _nipDisconnectTie(song, pos.bi, pos.ni, note);
   const newOct = (note.octaveShift ?? 0) + dir;
   note.octaveShift = newOct;
   if (pos) {
     _nipTryLinkTieEnd(song, pos.bi, pos.ni, note);
-    if (wasStart && !note.tie?.type) {
-      const match = _nipFindNextPitchMatch(song, pos.bi, pos.ni, note.degree, newOct);
-      if (match) {
-        const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+    if (!note.tie?.type && (wasStart || wasEnd)) {
+      const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+      if (wasStart) {
         note.tie = { type: 'start', groupId: newGid };
-        match.note.tie = match.note.tie?.type === 'start'
-          ? { type: 'continue', groupId: newGid }
-          : { type: 'end',      groupId: newGid };
+        const match = _nipFindNextPitchMatch(song, pos.bi, pos.ni, note.degree, newOct);
+        if (match) {
+          match.note.tie = match.note.tie?.type === 'start'
+            ? { type: 'continue', groupId: newGid }
+            : { type: 'end',      groupId: newGid };
+        }
+      } else {
+        note.tie = { type: 'end', groupId: newGid };
       }
     }
   }
@@ -3410,6 +3419,7 @@ function nipNudgeDegree(dir) {
   _nipPushUndo();
   const pos = _nipGetActiveNotePos(song);
   const wasStart = note.tie?.type === 'start' || note.tie?.type === 'continue';
+  const wasEnd   = note.tie?.type === 'end'   || note.tie?.type === 'continue';
   if (pos) _nipDisconnectTie(song, pos.bi, pos.ni, note);
   let d = note.degree + dir;
   let o = note.octaveShift ?? 0;
@@ -3419,14 +3429,18 @@ function nipNudgeDegree(dir) {
   note.octaveShift = o;
   if (pos) {
     _nipTryLinkTieEnd(song, pos.bi, pos.ni, note);
-    if (wasStart && !note.tie?.type) {
-      const match = _nipFindNextPitchMatch(song, pos.bi, pos.ni, d, o);
-      if (match) {
-        const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+    if (!note.tie?.type && (wasStart || wasEnd)) {
+      const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+      if (wasStart) {
         note.tie = { type: 'start', groupId: newGid };
-        match.note.tie = match.note.tie?.type === 'start'
-          ? { type: 'continue', groupId: newGid }
-          : { type: 'end',      groupId: newGid };
+        const match = _nipFindNextPitchMatch(song, pos.bi, pos.ni, d, o);
+        if (match) {
+          match.note.tie = match.note.tie?.type === 'start'
+            ? { type: 'continue', groupId: newGid }
+            : { type: 'end',      groupId: newGid };
+        }
+      } else {
+        note.tie = { type: 'end', groupId: newGid };
       }
     }
   }
