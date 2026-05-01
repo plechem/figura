@@ -3022,10 +3022,10 @@ function _nipRecolorAccent(g) {
 // Sync the palette (NIP.duration / .dot / .accidental) to reflect a note's
 // properties so the user sees its current state and can tweak immediately.
 function _nipSyncFromNote(note) {
-  if (!note || note.type === 'rest') return;
-  NIP.duration   = note.duration.base;
-  NIP.dot        = (note.duration.dots ?? 0) > 0;
-  NIP.accidental = note.accidental ?? null;
+  if (!note) return;
+  NIP.duration = note.duration.base;
+  NIP.dot      = (note.duration.dots ?? 0) > 0;
+  if (note.type !== 'rest') NIP.accidental = note.accidental ?? null;
 }
 
 // Change the duration of the selected note in place.
@@ -3036,7 +3036,7 @@ function nipMutateSelectedDuration(newBase, newDot) {
   if (!song || NIP.noteIdx === null || NIP.barIdx === null) return;
   const bar  = song.bars[NIP.barIdx];
   const note = bar?.notes[NIP.noteIdx];
-  if (!note || note.type === 'rest') return;
+  if (!note) return;
 
   const newBeats = BEAT_VAL[newBase] * (newDot ? 1.5 : 1);
   const oldBeats = BEAT_VAL[note.duration.base] * ((note.duration.dots ?? 0) > 0 ? 1.5 : 1);
@@ -3159,20 +3159,48 @@ function nipCommit(degree, octaveShift, isRest = false) {
   const song = songs[state.song];
   if (!song) return;
 
-  // SELECT MODE: replace the selected note's pitch (keep duration/position)
-  if (!isRest && NIP.noteIdx !== null && NIP.barIdx !== null) {
+  // SELECT MODE: replace the selected note/rest in place (keep duration/position)
+  if (NIP.noteIdx !== null && NIP.barIdx !== null) {
     const bar  = song.bars[NIP.barIdx];
     const note = bar?.notes[NIP.noteIdx];
-    if (note && note.type === 'note') {
-      _nipPushUndo();
-      const autoOct = octaveShift !== 0 ? octaveShift : _nipAutoOctave(song, degree);
-      note.degree     = degree;
-      note.accidental = NIP.accidental ?? null;
-      note.octaveShift = autoOct;
-      NIP.accidental   = null;
-      _nipSaveRender(song);
-      _nipUpdateState();
-      return;
+    if (note) {
+      if (isRest && note.type === 'rest') return; // already a rest, no-op
+
+      if (isRest && note.type === 'note') {
+        // note → rest: keep duration, strip pitch data
+        _nipPushUndo();
+        note.type = 'rest';
+        delete note.degree; delete note.accidental; delete note.octaveShift;
+        delete note.stem; delete note.midi;
+        note.tie = { type: null, groupId: null };
+        NIP.accidental = null;
+        _nipSaveRender(song); _nipUpdateState(); return;
+      }
+
+      if (!isRest && note.type === 'rest') {
+        // rest → note: keep duration, assign pitch
+        _nipPushUndo();
+        const autoOct = octaveShift !== 0 ? octaveShift : _nipAutoOctave(song, degree);
+        bar.notes[NIP.noteIdx] = {
+          id: note.id, type: 'note', degree,
+          accidental: NIP.accidental ?? null, octaveShift: autoOct,
+          duration: note.duration, tie: { type: null, groupId: null },
+          stem: 'auto', midi: null,
+        };
+        NIP.accidental = null;
+        _nipSaveRender(song); _nipUpdateState(); return;
+      }
+
+      if (!isRest && note.type === 'note') {
+        // note → note: update pitch only
+        _nipPushUndo();
+        const autoOct = octaveShift !== 0 ? octaveShift : _nipAutoOctave(song, degree);
+        note.degree      = degree;
+        note.accidental  = NIP.accidental ?? null;
+        note.octaveShift = autoOct;
+        NIP.accidental   = null;
+        _nipSaveRender(song); _nipUpdateState(); return;
+      }
     }
   }
 
