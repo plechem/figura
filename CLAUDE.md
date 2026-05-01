@@ -53,6 +53,8 @@ Notation style is based on hand-sketched examples (pink marker on white/dark bac
 
 Enable GitHub Pages on the repo so the proof of concept is viewable in a browser at the GitHub Pages URL.
 
+The app's canonical URL is **https://gofigura.com**.
+
 ## Degree Numbering and Multi-Octave Staff — Decided
 
 **Note numbers are always 1–7.** Never compound numbers (8, 9, 10…) and never negative. The octave register is communicated entirely by vertical position relative to the reference lines.

@@ -3171,6 +3171,7 @@ function nipCommit(degree, octaveShift, isRest = false) {
       if (isRest && note.type === 'note') {
         // note → rest: keep duration, strip pitch data
         _nipPushUndo();
+        _nipCleanupDeletedNote(song, NIP.barIdx, NIP.noteIdx, note);
         note.type = 'rest';
         delete note.degree; delete note.accidental; delete note.octaveShift;
         delete note.stem; delete note.midi;
@@ -3180,7 +3181,7 @@ function nipCommit(degree, octaveShift, isRest = false) {
       }
 
       if (!isRest && note.type === 'rest') {
-        // rest → note: keep duration, assign pitch
+        // rest → note: keep duration, assign pitch, then try to complete a dangling tie
         _nipPushUndo();
         const autoOct = octaveShift !== 0 ? octaveShift : _nipAutoOctave(song, degree);
         bar.notes[NIP.noteIdx] = {
@@ -3189,17 +3190,32 @@ function nipCommit(degree, octaveShift, isRest = false) {
           duration: note.duration, tie: { type: null, groupId: null },
           stem: 'auto', midi: null,
         };
+        _nipTryLinkTieEnd(song, NIP.barIdx, NIP.noteIdx, bar.notes[NIP.noteIdx]);
         NIP.accidental = null;
         _nipSaveRender(song); _nipUpdateState(); return;
       }
 
       if (!isRest && note.type === 'note') {
-        // note → note: update pitch only
+        // note → note: sever old tie, update pitch, reconnect
         _nipPushUndo();
-        const autoOct = octaveShift !== 0 ? octaveShift : _nipAutoOctave(song, degree);
+        const autoOct  = octaveShift !== 0 ? octaveShift : _nipAutoOctave(song, degree);
+        const wasStart = note.tie?.type === 'start' || note.tie?.type === 'continue';
+        _nipDisconnectTie(song, NIP.barIdx, NIP.noteIdx, note);
         note.degree      = degree;
         note.accidental  = NIP.accidental ?? null;
         note.octaveShift = autoOct;
+        _nipTryLinkTieEnd(song, NIP.barIdx, NIP.noteIdx, note);
+        if (wasStart && !note.tie?.type) {
+          // Was a tie-start: try to find a new forward target with the new pitch
+          const match = _nipFindNextPitchMatch(song, NIP.barIdx, NIP.noteIdx, degree, autoOct);
+          if (match) {
+            const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+            note.tie = { type: 'start', groupId: newGid };
+            match.note.tie = match.note.tie?.type === 'start'
+              ? { type: 'continue', groupId: newGid }
+              : { type: 'end',      groupId: newGid };
+          }
+        }
         NIP.accidental   = null;
         _nipSaveRender(song); _nipUpdateState(); return;
       }
@@ -3364,7 +3380,24 @@ function nipShiftOctave(dir) {
   const note = nipActiveNote();
   if (!note || note.type === 'rest') return;
   _nipPushUndo();
-  note.octaveShift = (note.octaveShift ?? 0) + dir;
+  const pos = _nipGetActiveNotePos(song);
+  const wasStart = note.tie?.type === 'start' || note.tie?.type === 'continue';
+  if (pos) _nipDisconnectTie(song, pos.bi, pos.ni, note);
+  const newOct = (note.octaveShift ?? 0) + dir;
+  note.octaveShift = newOct;
+  if (pos) {
+    _nipTryLinkTieEnd(song, pos.bi, pos.ni, note);
+    if (wasStart && !note.tie?.type) {
+      const match = _nipFindNextPitchMatch(song, pos.bi, pos.ni, note.degree, newOct);
+      if (match) {
+        const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+        note.tie = { type: 'start', groupId: newGid };
+        match.note.tie = match.note.tie?.type === 'start'
+          ? { type: 'continue', groupId: newGid }
+          : { type: 'end',      groupId: newGid };
+      }
+    }
+  }
   _nipSaveRender(song);
 }
 
@@ -3375,12 +3408,28 @@ function nipNudgeDegree(dir) {
   const note = nipActiveNote();
   if (!note || note.type === 'rest') return;
   _nipPushUndo();
+  const pos = _nipGetActiveNotePos(song);
+  const wasStart = note.tie?.type === 'start' || note.tie?.type === 'continue';
+  if (pos) _nipDisconnectTie(song, pos.bi, pos.ni, note);
   let d = note.degree + dir;
   let o = note.octaveShift ?? 0;
   if (d > 7) { d = 1; o++; }
   if (d < 1) { d = 7; o--; }
-  note.degree     = d;
+  note.degree      = d;
   note.octaveShift = o;
+  if (pos) {
+    _nipTryLinkTieEnd(song, pos.bi, pos.ni, note);
+    if (wasStart && !note.tie?.type) {
+      const match = _nipFindNextPitchMatch(song, pos.bi, pos.ni, d, o);
+      if (match) {
+        const newGid = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`;
+        note.tie = { type: 'start', groupId: newGid };
+        match.note.tie = match.note.tie?.type === 'start'
+          ? { type: 'continue', groupId: newGid }
+          : { type: 'end',      groupId: newGid };
+      }
+    }
+  }
   _nipSaveRender(song);
 }
 
@@ -3439,6 +3488,61 @@ function _nipFindPrevTieNode(song, gid, bi, startNi) {
     }
   }
   return null;
+}
+
+// Sever `note` from its tie chain without retargeting.  Call before a pitch change.
+function _nipDisconnectTie(song, bi, ni, note) {
+  if (note.type !== 'note' || !note.tie?.groupId) return;
+  const gid = note.tie.groupId;
+  const tt  = note.tie.type;
+  if (tt === 'start' || tt === 'continue') {
+    const fwd = _nipFindNextTieNode(song, gid, bi, ni + 1);
+    if (fwd) {
+      fwd.note.tie = fwd.note.tie.type === 'continue'
+        ? { type: 'start', groupId: gid }
+        : { type: null,    groupId: null };
+    }
+  }
+  if (tt === 'end' || tt === 'continue') {
+    const bwd = _nipFindPrevTieNode(song, gid, bi, ni - 1);
+    if (bwd) {
+      bwd.note.tie = bwd.note.tie.type === 'continue'
+        ? { type: 'end', groupId: gid }
+        : { type: null,  groupId: null };
+    }
+  }
+  note.tie = { type: null, groupId: null };
+}
+
+// After a pitch is assigned to `note`, try to link it as a tie-end.
+// Checks the pending step-input tie first, then scans backward for a dangling tie-start
+// whose groupId has no forward connection yet.
+function _nipTryLinkTieEnd(song, bi, ni, note) {
+  if (note.type !== 'note' || note.tie?.type) return;
+
+  // Pending tie from step input
+  if (NIP.pendingTieGid && note.degree === NIP.pendingTieDegree &&
+      (note.octaveShift ?? 0) === (NIP.pendingTieOct ?? 0)) {
+    note.tie = { type: 'end', groupId: NIP.pendingTieGid };
+    NIP.pendingTieGid = null; NIP.pendingTieDegree = null; NIP.pendingTieOct = null;
+    return;
+  }
+
+  // Backward scan: stop at the first same-pitch note
+  for (let b = bi; b >= 0; b--) {
+    const notes = song.bars[b].notes;
+    const end = b === bi ? ni - 1 : notes.length - 1;
+    for (let n = end; n >= 0; n--) {
+      const m = notes[n];
+      if (m.type !== 'note') continue;
+      if (m.degree !== note.degree || (m.octaveShift ?? 0) !== (note.octaveShift ?? 0)) continue;
+      // First same-pitch note: connect only if it's a dangling start
+      if (m.tie?.type === 'start' && !_nipFindNextTieNode(song, m.tie.groupId, b, n + 1)) {
+        note.tie = { type: 'end', groupId: m.tie.groupId };
+      }
+      return;
+    }
+  }
 }
 
 // Fix up tie references when the note at {bi, ni} is about to be deleted or silenced.

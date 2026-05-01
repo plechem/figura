@@ -2,7 +2,7 @@
   "name": "Figura",
   "short_name": "Figura",
   "description": "Scale degree notation for musicians",
-  "start_url": "/figura/",
+  "start_url": "https://gofigura.com/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "theme_color": "#1a1a2e",
