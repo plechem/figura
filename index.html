@@ -221,6 +221,7 @@
 
     /* ── Bar edit overlay ─────────────────────────────────────────────── */
     .bar-editable { position: relative; }
+    body.nip-open .bar-editable svg { cursor: pointer; user-select: none; }
     .bar-edit-btn {
       position: absolute;
       top: 4px;
@@ -1901,23 +1902,14 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     }
   }
 
-  // ── Note highlight (drawn behind everything) ──────────────────────────
-  if (highlightId !== null) {
-    for (const { n, x } of laid) {
-      if (n.id === highlightId && n.type !== 'rest') {
-        const hy = nY(n.degree, n.octaveShift ?? 0);
-        svg.appendChild(el('rect', {
-          x: x - NH.RX - 5, y: hy - NH.RY - 5,
-          width: (NH.RX + 5) * 2, height: (NH.RY + 5) * 2,
-          rx: 5, fill: 'var(--accent)', opacity: '0.22',
-          'pointer-events': 'none',
-        }));
-      }
-    }
-  }
-
   // ── Notes and rests ────────────────────────────────────────────────────
+  // Each note/rest is drawn into a <g> so we can recolour it to --accent
+  // as a unit when it is selected or highlighted.
   laid.forEach(({ n, x, beat }) => {
+    const g = el('g', {});
+    svg.appendChild(g);
+    const isHL = n.id === highlightId;
+
     if (n.type === 'rest') {
       // Gould: whole rests centre in the full note area; minim rests centre in their
       // 2-beat linear slot so they feel "inside" the half-bar, not at its edge.
@@ -1925,16 +1917,14 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
       if (n.duration.base === 'whole') {
         rx = NOTE_AREA_LEFT + NOTE_AREA_W / 2;
       } else if (n.duration.base === 'minim' && !isPickup) {
-        // Centre of the 2-beat slot: linear mapping (restoring a beat-grid reference)
         const slotMid = beat + 1;
         rx = NOTE_AREA_LEFT + ((slotMid - beatOffset) / beatRange) * NOTE_AREA_W;
       }
-      // Attachment line for whole/minim rests: centre of the staff.
-      // Two-line staff → midpoint; three-line staff → the centre tonic line.
       const restAttachY = thirdTop !== null ? lUPPER_Y
                         : thirdBot !== null ? lLOWER_Y
                         : (lUPPER_Y + lLOWER_Y) / 2;
-      drawRest(svg, rx, n.duration.base, lUPPER_Y, lLOWER_Y, restAttachY);
+      drawRest(g, rx, n.duration.base, lUPPER_Y, lLOWER_Y, restAttachY);
+      if (isHL) _nipRecolorAccent(g);
       return;
     }
 
@@ -1943,52 +1933,44 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const base = n.duration.base;
     const isBeamed = beamedIds.has(n.id);
 
-    // Notehead
-    drawNotehead(svg, x, y, base, n.degree, n.accidental, noteStyle, dir);
+    drawNotehead(g, x, y, base, n.degree, n.accidental, noteStyle, dir);
 
-    // Stem (skip for whole notes and beamed notes — beamed stems drawn above)
     if (base !== 'whole' && !isBeamed) {
-      // In numerals mode, minim brackets extend to NH_PAREN_SCALE; shift the
-      // stem attach point to the outer edge of the parenthesis arc.
-      // Bracket outer edge at the ellipseEdge angle ≈ NH_PAREN_SCALE (the taper
-      // reduces thickness there), so using NH_PAREN_SCALE puts the stem's outer
-      // edge flush with the bracket rather than floating beyond it.
       const stemScale = (noteStyle === 'numerals' && base === 'minim') ? NH_PAREN_STEM_SCALE : 1;
       const attach = stemAttach(x, y, dir, stemScale);
       const tip    = stemTipPt(attach, dir);
-      drawStem(svg, attach.x, attach.y, tip.x, tip.y);
-      // Flag for unbeamed quaver/semiquaver
+      drawStem(g, attach.x, attach.y, tip.x, tip.y);
       if (base === 'quaver' || base === 'semiquaver') {
-        drawFlag(svg, tip.x, tip.y, dir);
+        drawFlag(g, tip.x, tip.y, dir);
         if (base === 'semiquaver') {
-          const fs = dir === -1 ? 8 : -8;  // toward notehead
-          drawFlag(svg, tip.x, tip.y + fs, dir);
+          const fs = dir === -1 ? 8 : -8;
+          drawFlag(g, tip.x, tip.y + fs, dir);
         }
       }
     }
 
-    // Augmentation dots — placed a fixed gap past the notehead's true right edge.
-    // For numerals hollow notes the paren bracket extends further than NH.RX, so
-    // we use the outer bracket scale to find the actual rightmost point.
+    // Augmentation dots
     if (n.duration.dots > 0) {
       const isNumHollow = noteStyle === 'numerals' && (base === 'minim' || base === 'whole');
       const dotBaseX = isNumHollow
         ? ellipseEdge(x, y, 1, NH_PAREN_SCALE + NH_PAREN_THICK).x + 5
         : x + NH.RX + 6;
       for (let d = 0; d < n.duration.dots; d++) {
-        svg.appendChild(el('circle', { cx: dotBaseX + d * 7, cy: y - 3, r: 2.5, fill: 'var(--fg)' }));
+        g.appendChild(el('circle', { cx: dotBaseX + d * 7, cy: y - 3, r: 2.5, fill: 'var(--fg)' }));
       }
     }
 
-    // Ledger-line hint for notes outside the staff (subtle accent line)
+    // Ledger-line hint (stays accent-coloured regardless of selection)
     if ((n.octaveShift ?? 0) !== 0) {
       const refY = (n.octaveShift ?? 0) > 0 ? lUPPER_Y : lLOWER_Y;
-      svg.appendChild(el('line', {
+      svg.appendChild(el('line', {          // intentionally on svg, not g
         x1: x - 18, y1: refY, x2: x + 18, y2: refY,
         stroke: 'var(--accent)', 'stroke-width': 1.2,
         'stroke-dasharray': '4 3', opacity: '0.55'
       }));
     }
+
+    if (isHL) _nipRecolorAccent(g);
   });
 
   // ── Tie arcs ───────────────────────────────────────────────────────────
@@ -3018,6 +3000,23 @@ function _nipNewId() {
   const uid = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID().slice(0, 8) : Date.now().toString(36);
   return `n-${uid}`;
+}
+
+// Recolour all fg/note-fill elements inside a note group to --accent.
+// Leaves --bg (hollow-notehead interior) and --note-text (white digit) unchanged
+// so hollow noteheads stay hollow and text-on-solid-head stays legible.
+function _nipRecolorAccent(g) {
+  const TARGETS = new Set(['var(--fg)', 'var(--note-fill)']);
+  function walk(node) {
+    for (const child of node.children) {
+      const fill = child.getAttribute('fill');
+      if (fill && TARGETS.has(fill)) child.setAttribute('fill', 'var(--accent)');
+      const stroke = child.getAttribute('stroke');
+      if (stroke && TARGETS.has(stroke)) child.setAttribute('stroke', 'var(--accent)');
+      if (child.children.length) walk(child);
+    }
+  }
+  walk(g);
 }
 
 // Sync the palette (NIP.duration / .dot / .accidental) to reflect a note's
