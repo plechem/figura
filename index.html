@@ -3323,11 +3323,20 @@ function nipNavigate(dir) {
       if (NIP.noteIdx < (bar?.notes.length ?? 0) - 1) {
         NIP.noteIdx++;
       } else {
-        NIP.noteIdx    = null;  // past last note → insert mode
-        NIP.highlightId = null;
+        // At the last note of this bar — advance to the next bar if one exists
+        const next = NIP.barIdx + 1;
+        if (next < song.bars.length && song.bars[next].notes.length > 0) {
+          NIP.barIdx     = next;
+          NIP.noteIdx    = 0;
+          NIP.highlightId = null;
+        } else {
+          // Final bar (or next bar is empty) → switch to insert/cursor mode
+          NIP.noteIdx    = null;
+          NIP.highlightId = null;
+        }
       }
     }
-    // In insert mode, → does nothing (already at end)
+    // In insert mode at end of a bar, → does nothing
   } else {
     if (NIP.noteIdx !== null) {
       if (NIP.noteIdx > 0) {
