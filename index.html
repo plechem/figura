@@ -602,21 +602,22 @@
 <!-- ── Note input panel (step-time entry) ────────────────────────────── -->
 <div class="nip-panel" id="nipPanel">
   <div class="nip-row">
-    <button class="nip-btn nip-dur" data-dur="whole"          title="Whole (Numpad 7)">𝅝<span class="nip-key">7</span></button>
-    <button class="nip-btn nip-dur" data-dur="minim"          title="Half (Numpad 6)">𝅗𝅥<span class="nip-key">6</span></button>
-    <button class="nip-btn nip-dur active" data-dur="crotchet" title="Quarter (Numpad 5)">♩<span class="nip-key">5</span></button>
-    <button class="nip-btn nip-dur" data-dur="quaver"         title="Eighth (Numpad 4)">♪<span class="nip-key">4</span></button>
-    <button class="nip-btn nip-dur" data-dur="semiquaver"     title="16th (Numpad 3)">𝅘𝅥𝅯<span class="nip-key">3</span></button>
-    <button class="nip-btn nip-dur" data-dur="demisemiquaver" title="32nd (Numpad 2)">32<span class="nip-key">2</span></button>
+    <button class="nip-btn nip-dur" data-dur="whole"          title="Whole (Numpad 6)">𝅝<span class="nip-key">6</span></button>
+    <button class="nip-btn nip-dur" data-dur="minim"          title="Half (Numpad 5)">𝅗𝅥<span class="nip-key">5</span></button>
+    <button class="nip-btn nip-dur active" data-dur="crotchet" title="Quarter (Numpad 4)">♩<span class="nip-key">4</span></button>
+    <button class="nip-btn nip-dur" data-dur="quaver"         title="Eighth (Numpad 3)">♪<span class="nip-key">3</span></button>
+    <button class="nip-btn nip-dur" data-dur="semiquaver"     title="16th (Numpad 2)">𝅘𝅥𝅯<span class="nip-key">2</span></button>
+    <button class="nip-btn nip-dur" data-dur="demisemiquaver" title="32nd (Numpad 1)">32<span class="nip-key">1</span></button>
     <div class="nip-sep"></div>
-    <button class="nip-btn" id="nipDot"   title="Dotted (Numpad .)">·<span class="nip-key">.</span></button>
+    <button class="nip-btn" id="nipDot"     title="Dotted (Numpad .)">·<span class="nip-key">.</span></button>
     <div class="nip-sep"></div>
-    <button class="nip-btn" id="nipFlat"  title="Flat (b key)">♭</button>
-    <button class="nip-btn" id="nipSharp" title="Sharp (# key)">♯</button>
+    <button class="nip-btn" id="nipFlat"    title="Flat (Numpad 9)">♭<span class="nip-key">9</span></button>
+    <button class="nip-btn" id="nipSharp"   title="Sharp (Numpad 8)">♯<span class="nip-key">8</span></button>
+    <button class="nip-btn" id="nipNatural" title="Natural / clear accidental (Numpad 7)">♮<span class="nip-key">7</span></button>
     <div class="nip-sep"></div>
-    <button class="nip-btn" id="nipRest"  title="Rest (Numpad 0)">𝄽<span class="nip-key">0</span></button>
+    <button class="nip-btn" id="nipRest"    title="Rest (Numpad 0)">𝄽<span class="nip-key">0</span></button>
     <div class="nip-sep"></div>
-    <button class="nip-btn" id="nipTie"   title="Tie next note (Numpad Enter)">⌒ tie<span class="nip-key">↵</span></button>
+    <button class="nip-btn" id="nipTie"     title="Tie next note (Numpad Enter)">⌒ tie<span class="nip-key">↵</span></button>
   </div>
   <div class="nip-row">
     <div class="nip-degrees">
@@ -3173,8 +3174,8 @@ function nipPanelShow(on) {
 // ── Keyboard handler ───────────────────────────────────────────────────────
 
 const _NUMPAD_DUR = {
-  Numpad7: 'whole', Numpad6: 'minim',     Numpad5: 'crotchet',
-  Numpad4: 'quaver', Numpad3: 'semiquaver', Numpad2: 'demisemiquaver',
+  Numpad6: 'whole', Numpad5: 'minim',     Numpad4: 'crotchet',
+  Numpad3: 'quaver', Numpad2: 'semiquaver', Numpad1: 'demisemiquaver',
 };
 
 document.addEventListener('keydown', e => {
@@ -3197,6 +3198,12 @@ document.addEventListener('keydown', e => {
       NIP.tieNext = !NIP.tieNext; _nipUpdateState(); e.preventDefault(); return;
     case 'NumpadDivide':
       nipInsertBarline(); e.preventDefault(); return;
+    case 'Numpad9':
+      NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  NIP.rest = false; _nipUpdateState(); e.preventDefault(); return;
+    case 'Numpad8':
+      NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; NIP.rest = false; _nipUpdateState(); e.preventDefault(); return;
+    case 'Numpad7':
+      NIP.accidental = null; NIP.rest = false; _nipUpdateState(); e.preventDefault(); return;
   }
 
   // Undo / redo
@@ -3236,8 +3243,9 @@ document.querySelectorAll('.nip-deg-btn').forEach(btn =>
   btn.addEventListener('click', () => nipCommit(parseInt(btn.dataset.deg), 0)));
 
 document.getElementById('nipDot')?.addEventListener('click',    () => { NIP.dot      = !NIP.dot;                           _nipUpdateState(); });
-document.getElementById('nipFlat')?.addEventListener('click',   () => { NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  NIP.rest = false; _nipUpdateState(); });
-document.getElementById('nipSharp')?.addEventListener('click',  () => { NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; NIP.rest = false; _nipUpdateState(); });
+document.getElementById('nipFlat')?.addEventListener('click',    () => { NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  NIP.rest = false; _nipUpdateState(); });
+document.getElementById('nipSharp')?.addEventListener('click',   () => { NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; NIP.rest = false; _nipUpdateState(); });
+document.getElementById('nipNatural')?.addEventListener('click', () => { NIP.accidental = null; NIP.rest = false; _nipUpdateState(); });
 document.getElementById('nipRest')?.addEventListener('click',   () => { NIP.rest    = !NIP.rest;   NIP.accidental = null; _nipUpdateState(); });
 document.getElementById('nipTie')?.addEventListener('click',    () => { NIP.tieNext = !NIP.tieNext;                        _nipUpdateState(); });
 document.getElementById('nipRespell')?.addEventListener('click', nipRespell);
