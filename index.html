@@ -1687,7 +1687,7 @@ function drawTieArc(svg, sx, ex, arcY) {
 function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false,
                    suppressTieStarts = new Set(), suppressTieEnds = new Set(), rowHeight = L.H,
                    barWidth = L.W, barNumber = 0, noteStyle = 'heads', chordPosition = 'below',
-                   cursorBeat = null) {
+                   cursorBeat = null, highlightId = null) {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -1901,6 +1901,21 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     }
   }
 
+  // ── Note highlight (drawn behind everything) ──────────────────────────
+  if (highlightId !== null) {
+    for (const { n, x } of laid) {
+      if (n.id === highlightId && n.type !== 'rest') {
+        const hy = nY(n.degree, n.octaveShift ?? 0);
+        svg.appendChild(el('rect', {
+          x: x - NH.RX - 5, y: hy - NH.RY - 5,
+          width: (NH.RX + 5) * 2, height: (NH.RY + 5) * 2,
+          rx: 5, fill: 'var(--accent)', opacity: '0.22',
+          'pointer-events': 'none',
+        }));
+      }
+    }
+  }
+
   // ── Notes and rests ────────────────────────────────────────────────────
   laid.forEach(({ n, x, beat }) => {
     if (n.type === 'rest') {
@@ -1952,10 +1967,16 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
       }
     }
 
-    // Augmentation dots
+    // Augmentation dots — placed a fixed gap past the notehead's true right edge.
+    // For numerals hollow notes the paren bracket extends further than NH.RX, so
+    // we use the outer bracket scale to find the actual rightmost point.
     if (n.duration.dots > 0) {
+      const isNumHollow = noteStyle === 'numerals' && (base === 'minim' || base === 'whole');
+      const dotBaseX = isNumHollow
+        ? ellipseEdge(x, y, 1, NH_PAREN_SCALE + NH_PAREN_THICK).x + 5
+        : x + NH.RX + 6;
       for (let d = 0; d < n.duration.dots; d++) {
-        svg.appendChild(el('circle', { cx: x + NH.RX + 6 + d * 7, cy: y - 3, r: 2.5, fill: 'var(--fg)' }));
+        svg.appendChild(el('circle', { cx: dotBaseX + d * 7, cy: y - 3, r: 2.5, fill: 'var(--fg)' }));
       }
     }
 
@@ -2017,7 +2038,10 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
 
   // ── Input cursor ───────────────────────────────────────────────────────
   if (cursorBeat !== null) {
-    const cx = beatToOpticalX(cursorBeat, laid, NOTE_AREA_LEFT, NOTE_AREA_RIGHT, beatOffset, beatRange);
+    const barFull = cursorBeat >= ts.beats - 0.001;
+    const cx = barFull
+      ? (isRowEnd ? barWidth - 15 : barWidth - 3)  // at the barline
+      : beatToOpticalX(cursorBeat, laid, NOTE_AREA_LEFT, NOTE_AREA_RIGHT, beatOffset, beatRange);
     svg.appendChild(el('line', {
       x1: cx, y1: barTop - 5, x2: cx, y2: barBot + 5,
       stroke: 'var(--accent)', 'stroke-width': 2.5, 'stroke-linecap': 'round',
@@ -2428,24 +2452,60 @@ function render() {
         const physW = flexWeights[posInRow] / totalFlex * barsInRow * targetBarWidth;
         barWrap.style.cssText = `flex:0 0 ${physW}px; width:${physW}px;`;
       }
-      const cursorBeat = (NIP.barIdx === barIdx) ? nipGetBeat() : null;
+      const nipOpen    = document.getElementById('nipPanel')?.classList.contains('open');
+      const isNipBar   = nipOpen && NIP.barIdx === barIdx;
+      let cursorBeat   = null;
+      let highlightId  = null;
+      if (isNipBar) {
+        if (NIP.noteIdx !== null) {
+          highlightId = bar.notes[NIP.noteIdx]?.id ?? null;
+        } else {
+          cursorBeat  = nipGetBeat();
+          highlightId = NIP.highlightId;
+        }
+      } else if (nipOpen && NIP.highlightId) {
+        // highlight may live in a bar other than NIP.barIdx (e.g. tie-end in next bar)
+        if (bar.notes.some(n => n.id === NIP.highlightId)) highlightId = NIP.highlightId;
+      }
+      const capturedIdx     = barIdx;
+      const capturedShowTS  = showTSArr[posInRow];
+      const capturedBarW    = barWidths[posInRow];
       barWrap.appendChild(
-        renderBar(bar, state.key, state.format, showTSArr[posInRow], isLast, isRowEnd,
+        renderBar(bar, state.key, state.format, capturedShowTS, isLast, isRowEnd,
           suppressStarts[barIdx] ?? new Set(),
           suppressEnds[barIdx]   ?? new Set(),
-          rowH, barWidths[posInRow], 0, state.noteStyle, state.chordPos, cursorBeat)
+          rowH, capturedBarW, 0, state.noteStyle, state.chordPos, cursorBeat, highlightId)
       );
       if (DOC.source === 'user') {
         barWrap.classList.add('bar-editable');
         const editBtn = document.createElement('button');
         editBtn.className   = 'bar-edit-btn';
         editBtn.textContent = 'Edit';
-        const capturedIdx = barIdx;
         editBtn.addEventListener('click', (e) => { e.stopPropagation(); openBarEditor(capturedIdx); });
         barWrap.appendChild(editBtn);
-        // Click on bar wrapper positions the note-input cursor
-        barWrap.addEventListener('click', () => {
-          if (document.getElementById('nipPanel')?.classList.contains('open')) {
+        // Click on bar: detect note hit → select mode; else → insert mode
+        barWrap.addEventListener('click', e => {
+          e.stopPropagation();
+          if (!document.getElementById('nipPanel')?.classList.contains('open')) return;
+          const svg  = barWrap.querySelector('svg');
+          if (!svg) { nipMoveCursorTo(capturedIdx); return; }
+          const rect  = svg.getBoundingClientRect();
+          const vbW   = parseFloat(svg.getAttribute('viewBox').split(' ')[2]);
+          const vbX   = (e.clientX - rect.left) / rect.width * vbW;
+          const positions = barNotePositions(bar, capturedShowTS, capturedBarW);
+          const HIT   = 14;  // viewBox units for click radius
+          let closest = null, closestDist = HIT;
+          for (const { n, x } of positions) {
+            const d = Math.abs(vbX - x);
+            if (d < closestDist) { closestDist = d; closest = n; }
+          }
+          if (closest) {
+            NIP.barIdx     = capturedIdx;
+            NIP.noteIdx    = bar.notes.indexOf(closest);
+            NIP.highlightId = null;
+            render();
+            _nipUpdateState();
+          } else {
             nipMoveCursorTo(capturedIdx);
           }
         });
@@ -2653,8 +2713,7 @@ function updateEditToolbar() {
   }
   nipPanelShow(isUserSong);
   if (!isUserSong) {
-    NIP.barIdx = null;
-    NIP.lastNoteRef = null;
+    NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
     _undoStack = [];
     _redoStack = [];
     _nipUpdateUndoRedo();
@@ -2770,8 +2829,7 @@ document.getElementById('songSelect').addEventListener('change', e => {
   state.key = doc.key;
   document.getElementById('keySelect').value = doc.key;
   saveState();
-  NIP.barIdx = null;
-  NIP.lastNoteRef = null;
+  NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
   _undoStack = [];
   _redoStack = [];
   updateEditToolbar();
@@ -2811,12 +2869,13 @@ document.getElementById('themeBtn').addEventListener('click', () => {
 
 // ── Note-input globals (declared here so init() can access them) ──────────
 let NIP = {
-  barIdx:      null,
-  duration:    'crotchet',
-  dot:         false,
-  accidental:  null,
-  tieNext:     false,
-  lastNoteRef: null,
+  barIdx:        null,   // null = inactive; number = bar with cursor/selection
+  noteIdx:       null,   // null = insert mode (cursor); number = select mode (note index)
+  highlightId:   null,   // ID of last-entered note, shown highlighted in insert mode
+  duration:      'crotchet',
+  dot:           false,
+  accidental:    null,
+  pendingTieGid: null,   // groupId of a just-tied note; next commit uses tie-end
 };
 let _undoStack = [];
 let _redoStack = [];
@@ -2868,6 +2927,15 @@ new ResizeObserver(() => {
   _resizeTimer = setTimeout(render, 60);
 }).observe(document.getElementById('scoreWrap'));
 
+// Click anywhere outside the score deactivates the NIP cursor.
+document.addEventListener('click', () => {
+  if (!document.getElementById('nipPanel')?.classList.contains('open')) return;
+  if (NIP.barIdx === null) return;
+  NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null;
+  render();
+  _nipUpdateState();
+});
+
 // ══════════════════════════════════════════════════════════════════════════
 // NOTE INPUT (step-time entry) — NIP globals declared above before init()
 // ══════════════════════════════════════════════════════════════════════════
@@ -2886,6 +2954,7 @@ function nipUndo() {
   _redoStack.push(JSON.stringify(song.bars));
   song.bars = JSON.parse(_undoStack.pop());
   song.bars.forEach((b, i) => { b.index = i; });
+  NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
   _nipSaveRender(song);
   _nipUpdateUndoRedo();
 }
@@ -2896,6 +2965,7 @@ function nipRedo() {
   _undoStack.push(JSON.stringify(song.bars));
   song.bars = JSON.parse(_redoStack.pop());
   song.bars.forEach((b, i) => { b.index = i; });
+  NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
   _nipSaveRender(song);
   _nipUpdateUndoRedo();
 }
@@ -2949,6 +3019,58 @@ function _nipNewId() {
   return `n-${uid}`;
 }
 
+// Return the note that is currently "active" — selected in select mode, or
+// the last-entered note (highlightId) in insert mode.
+function nipActiveNote() {
+  const song = songs[state.song];
+  if (!song || NIP.barIdx === null) return null;
+  if (NIP.noteIdx !== null) {
+    return song.bars[NIP.barIdx]?.notes[NIP.noteIdx] ?? null;
+  }
+  if (NIP.highlightId) {
+    for (let b = NIP.barIdx; b >= Math.max(0, NIP.barIdx - 2); b--) {
+      const note = song.bars[b]?.notes.find(n => n.id === NIP.highlightId);
+      if (note) return note;
+    }
+  }
+  return null;
+}
+
+// Semitone offsets for scale degrees 1–7 in major.
+const _SCALE_ST = [0, 2, 4, 5, 7, 9, 11];
+
+// Pick the octaveShift for `degree` that minimises semitone distance to the
+// most recent non-rest note.  Returns 0 when there is no previous note.
+function _nipAutoOctave(song, degree) {
+  let prevNote = null;
+  const bi = NIP.barIdx ?? (song.bars.length - 1);
+  outer:
+  for (let b = bi; b >= 0; b--) {
+    if (b >= song.bars.length) continue;
+    const notes = song.bars[b].notes;
+    // In select mode skip the selected note itself when looking backward
+    const top = (b === bi && NIP.noteIdx !== null) ? NIP.noteIdx - 1 : notes.length - 1;
+    for (let i = top; i >= 0; i--) {
+      if (notes[i].type === 'note') { prevNote = notes[i]; break outer; }
+    }
+  }
+  if (!prevNote) return 0;
+
+  const acST = a => a === 'sharp' ? 1 : a === 'flat' ? -1 : 0;
+  const prevTotal = _SCALE_ST[prevNote.degree - 1] + acST(prevNote.accidental)
+    + (prevNote.octaveShift ?? 0) * 12;
+  const degST = _SCALE_ST[degree - 1] + acST(NIP.accidental);
+
+  let best = 0, bestDist = Infinity;
+  for (const oct of [-1, 0, 1]) {
+    const dist = Math.abs(degST + oct * 12 - prevTotal);
+    if (dist < bestDist || (dist === bestDist && Math.abs(oct) < Math.abs(best))) {
+      bestDist = dist; best = oct;
+    }
+  }
+  return best;
+}
+
 function _nipAppendBar(song) {
   const idx = song.bars.length;
   const ts  = { ...(song.defaultTimeSignature ?? { beats: 4, division: 4 }) };
@@ -2966,19 +3088,52 @@ function nipInsertRest() { nipCommit(null, 0, true); }
 function nipCommit(degree, octaveShift, isRest = false) {
   const song = songs[state.song];
   if (!song) return;
-  if (NIP.barIdx === null) NIP.barIdx = song.bars.length; // append mode
+
+  // SELECT MODE: replace the selected note's pitch (keep duration/position)
+  if (!isRest && NIP.noteIdx !== null && NIP.barIdx !== null) {
+    const bar  = song.bars[NIP.barIdx];
+    const note = bar?.notes[NIP.noteIdx];
+    if (note && note.type === 'note') {
+      _nipPushUndo();
+      const autoOct = octaveShift !== 0 ? octaveShift : _nipAutoOctave(song, degree);
+      note.degree     = degree;
+      note.accidental = NIP.accidental ?? null;
+      note.octaveShift = autoOct;
+      NIP.accidental   = null;
+      _nipSaveRender(song);
+      _nipUpdateState();
+      return;
+    }
+  }
+
+  // INSERT MODE — advance past any full bars first (lazy bar creation)
+  if (NIP.barIdx === null) NIP.barIdx = song.bars.length;
+  while (NIP.barIdx < song.bars.length) {
+    const b     = song.bars[NIP.barIdx];
+    const space = Math.round((b.timeSignature.beats - barCurrentBeat(b)) * 1000) / 1000;
+    if (space > 0.001) break;
+    NIP.barIdx++;
+  }
+  while (NIP.barIdx >= song.bars.length) _nipAppendBar(song);
+
+  // Auto-octave in insert mode (skipped when caller passes explicit octaveShift ≠ 0)
+  if (!isRest && octaveShift === 0) octaveShift = _nipAutoOctave(song, degree);
 
   _nipPushUndo();
 
   const baseBeat   = BEAT_VAL[NIP.duration];
   const totalBeats = NIP.dot ? baseBeat * 1.5 : baseBeat;
   const acc        = isRest ? null : (NIP.accidental ?? null);
-  const oct        = isRest ? 0    : (octaveShift ?? 0);
+  const oct        = isRest ? 0    : octaveShift;
 
-  let remaining = Math.round(totalBeats * 1000) / 1000;
-  let isFirst   = true;
-  const tieGid  = (typeof crypto !== 'undefined' && crypto.randomUUID)
-    ? crypto.randomUUID() : `tg-${Date.now().toString(36)}`;
+  const tieGid      = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now().toString(36)}`;
+  const hasPending  = !!NIP.pendingTieGid;
+  const pendingGid  = NIP.pendingTieGid;
+
+  let remaining    = Math.round(totalBeats * 1000) / 1000;
+  let isFirst      = true;
+  let lastBarIdx   = NIP.barIdx;
+  let lastNoteId   = null;
 
   while (remaining > 0.001) {
     while (NIP.barIdx >= song.bars.length) _nipAppendBar(song);
@@ -2995,100 +3150,152 @@ function nipCommit(degree, octaveShift, isRest = false) {
       const isLastPart = i === parts.length - 1;
       const isLastFill = remaining - fill < 0.001;
       const needsAfter  = !isLastPart || !isLastFill;
-      const needsBefore = !isFirst || NIP.tieNext;
+      const needsBefore = !isFirst || hasPending;
 
-      let tieType = null;
-      if      (needsBefore && needsAfter) tieType = 'continue';
-      else if (needsBefore)               tieType = 'end';
-      else if (needsAfter)                tieType = 'start';
+      let tieType = null, gid = null;
+      if      (needsBefore && needsAfter) { tieType = 'continue'; gid = tieGid; }
+      else if (needsBefore)               { tieType = 'end';      gid = hasPending && isFirst ? pendingGid : tieGid; }
+      else if (needsAfter)                { tieType = 'start';    gid = tieGid; }
 
       const noteId = _nipNewId();
       let note;
       if (isRest) {
-        note = {
-          id: noteId, type: 'rest',
+        note = { id: noteId, type: 'rest',
           duration: { base: part.base, dots: part.dot ? 1 : 0, tuplet: null },
-          tie: { type: null, groupId: null },
-        };
+          tie: { type: null, groupId: null } };
       } else {
-        note = {
-          id: noteId, type: 'note',
+        note = { id: noteId, type: 'note',
           degree, accidental: acc, octaveShift: oct,
           duration: { base: part.base, dots: part.dot ? 1 : 0, tuplet: null },
-          tie: { type: tieType, groupId: tieType ? tieGid : null },
-          stem: 'auto', midi: null,
-        };
-        NIP.lastNoteRef = { barIdx: NIP.barIdx, noteId };
+          tie: { type: tieType, groupId: gid },
+          stem: 'auto', midi: null };
       }
       bar.notes.push(note);
+      lastBarIdx = NIP.barIdx;
+      lastNoteId = noteId;
       isFirst = false;
     });
 
     remaining = Math.round((remaining - fill) * 1000) / 1000;
-    if (remaining > 0.001) {
-      NIP.barIdx++;
-    } else {
-      // If bar is now full, advance cursor
-      const filled = barCurrentBeat(bar);
-      if (Math.abs(filled - beatsInBar) < 0.001) {
-        NIP.barIdx++;
-        while (NIP.barIdx >= song.bars.length) _nipAppendBar(song);
-      }
-    }
+    if (remaining > 0.001) NIP.barIdx++;
+    // Do NOT eagerly advance past a just-filled bar — cursor stays at barline
   }
 
-  NIP.tieNext    = false;
-  NIP.accidental = null;
+  NIP.barIdx       = lastBarIdx;  // bar where the last note landed
+  NIP.noteIdx      = null;        // insert mode, cursor at end
+  NIP.highlightId  = lastNoteId;  // highlight the just-entered note
+  NIP.pendingTieGid = null;
+  NIP.accidental   = null;
   _nipSaveRender(song);
   _nipUpdateState();
 }
 
-function nipDelete() {
+// Backspace: remove selected note (select mode) or pop last note (insert mode).
+function nipBackspace() {
   const song = songs[state.song];
   if (!song) return;
-  // Find the last non-empty bar at or before cursor
+
+  if (NIP.noteIdx !== null && NIP.barIdx !== null) {
+    const bar = song.bars[NIP.barIdx];
+    if (!bar || NIP.noteIdx >= bar.notes.length) return;
+    _nipPushUndo();
+    bar.notes.splice(NIP.noteIdx, 1);
+    if (bar.notes.length === 0 && NIP.barIdx === song.bars.length - 1 && NIP.barIdx > 0) {
+      song.bars.pop();
+      NIP.barIdx--;
+    }
+    NIP.noteIdx    = bar.notes.length > 0 ? Math.min(NIP.noteIdx, bar.notes.length - 1) : null;
+    NIP.highlightId = null;
+    _nipSaveRender(song);
+    _nipUpdateState();
+    return;
+  }
+
+  // Insert mode: pop last note from current or previous bar
   let bi = NIP.barIdx ?? song.bars.length - 1;
   while (bi >= 0 && (bi >= song.bars.length || song.bars[bi].notes.length === 0)) bi--;
   if (bi < 0) return;
-
   _nipPushUndo();
   const bar = song.bars[bi];
   bar.notes.pop();
-  NIP.barIdx = bi;
-  NIP.lastNoteRef = bar.notes.length
-    ? { barIdx: bi, noteId: bar.notes[bar.notes.length - 1].id }
-    : null;
-
-  // Remove trailing empty bar (except the very first)
+  NIP.barIdx     = bi;
+  NIP.highlightId = bar.notes.length ? bar.notes[bar.notes.length - 1].id : null;
   if (bar.notes.length === 0 && bi === song.bars.length - 1 && bi > 0) {
     song.bars.pop();
     NIP.barIdx = bi - 1;
+    NIP.highlightId = null;
   }
   _nipSaveRender(song);
   _nipUpdateState();
 }
 
-function nipShiftOctave(dir) {
-  if (!NIP.lastNoteRef) return;
+// Delete key: turn selected (or last highlighted) note into a rest of same duration.
+function nipForwardDelete() {
   const song = songs[state.song];
-  const bar  = song?.bars[NIP.lastNoteRef.barIdx];
-  if (!bar) return;
-  const note = bar.notes.find(n => n.id === NIP.lastNoteRef.noteId);
+  if (!song) return;
+  const note = nipActiveNote();
+  if (!note || note.type === 'rest') return;
+  _nipPushUndo();
+  note.type        = 'rest';
+  note.degree      = undefined;
+  note.accidental  = undefined;
+  note.octaveShift = undefined;
+  note.stem        = undefined;
+  note.midi        = undefined;
+  note.tie         = { type: null, groupId: null };
+  _nipSaveRender(song);
+}
+
+function nipShiftOctave(dir) {
+  const song = songs[state.song];
+  if (!song) return;
+  const note = nipActiveNote();
   if (!note || note.type === 'rest') return;
   _nipPushUndo();
   note.octaveShift = (note.octaveShift ?? 0) + dir;
   _nipSaveRender(song);
 }
 
-// Semitone offsets for scale degrees 1–7 in major.
-const _SCALE_ST = [0, 2, 4, 5, 7, 9, 11];
+// Nudge the degree of the active note up or down one step, wrapping with octave shift.
+function nipNudgeDegree(dir) {
+  const song = songs[state.song];
+  if (!song) return;
+  const note = nipActiveNote();
+  if (!note || note.type === 'rest') return;
+  _nipPushUndo();
+  let d = note.degree + dir;
+  let o = note.octaveShift ?? 0;
+  if (d > 7) { d = 1; o++; }
+  if (d < 1) { d = 7; o--; }
+  note.degree     = d;
+  note.octaveShift = o;
+  _nipSaveRender(song);
+}
+
+// Immediately mark the active note as tie-start (or toggle it off); sets pendingTieGid
+// so the next commit enters with tie-end.
+function nipSetTie() {
+  const song = songs[state.song];
+  if (!song) return;
+  const note = nipActiveNote();
+  if (!note || note.type === 'rest') return;
+  _nipPushUndo();
+  if (note.tie?.type === 'start') {
+    note.tie       = { type: null, groupId: null };
+    NIP.pendingTieGid = null;
+  } else {
+    const gid = note.tie?.groupId || (crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`);
+    note.tie       = { type: 'start', groupId: gid };
+    NIP.pendingTieGid = gid;
+  }
+  _nipSaveRender(song);
+  _nipUpdateState();
+}
 
 function nipRespell() {
-  if (!NIP.lastNoteRef) return;
   const song = songs[state.song];
-  const bar  = song?.bars[NIP.lastNoteRef.barIdx];
-  if (!bar) return;
-  const note = bar.notes.find(n => n.id === NIP.lastNoteRef.noteId);
+  if (!song) return;
+  const note = nipActiveNote();
   if (!note || note.type === 'rest' || !note.accidental) return;
   const st = _SCALE_ST[note.degree - 1] + (note.accidental === 'sharp' ? 1 : -1);
   for (let d = 1; d <= 7; d++) {
@@ -3096,13 +3303,61 @@ function nipRespell() {
     for (const acc of ['flat', 'sharp']) {
       if (_SCALE_ST[d - 1] + (acc === 'sharp' ? 1 : -1) === st) {
         _nipPushUndo();
-        note.degree = d;
+        note.degree     = d;
         note.accidental = acc;
         _nipSaveRender(song);
         return;
       }
     }
   }
+}
+
+// Navigate left (dir=-1) or right (dir=1) between notes.
+function nipNavigate(dir) {
+  const song = songs[state.song];
+  if (!song || NIP.barIdx === null) return;
+
+  if (dir === 1) {
+    if (NIP.noteIdx !== null) {
+      const bar = song.bars[NIP.barIdx];
+      if (NIP.noteIdx < (bar?.notes.length ?? 0) - 1) {
+        NIP.noteIdx++;
+      } else {
+        NIP.noteIdx    = null;  // past last note → insert mode
+        NIP.highlightId = null;
+      }
+    }
+    // In insert mode, → does nothing (already at end)
+  } else {
+    if (NIP.noteIdx !== null) {
+      if (NIP.noteIdx > 0) {
+        NIP.noteIdx--;
+        NIP.highlightId = null;
+      } else {
+        // At first note: jump to end of previous bar
+        if (NIP.barIdx > 0) {
+          NIP.barIdx--;
+          const prev = song.bars[NIP.barIdx];
+          NIP.noteIdx    = prev?.notes.length > 0 ? prev.notes.length - 1 : null;
+          NIP.highlightId = null;
+        }
+      }
+    } else {
+      // Insert mode: select last note of current bar
+      const bar = song.bars[NIP.barIdx];
+      if (bar?.notes.length > 0) {
+        NIP.noteIdx    = bar.notes.length - 1;
+        NIP.highlightId = null;
+      } else if (NIP.barIdx > 0) {
+        NIP.barIdx--;
+        const prev = song.bars[NIP.barIdx];
+        NIP.noteIdx    = prev?.notes.length > 0 ? prev.notes.length - 1 : null;
+        NIP.highlightId = null;
+      }
+    }
+  }
+  render();
+  _nipUpdateState();
 }
 
 function nipInsertBarline() {
@@ -3112,29 +3367,23 @@ function nipInsertBarline() {
   while (NIP.barIdx >= song.bars.length) _nipAppendBar(song);
   const bar     = song.bars[NIP.barIdx];
   const curBeat = barCurrentBeat(bar);
-  if (curBeat < 0.001) return; // nothing entered yet in this bar
+  if (curBeat < 0.001) return;
 
   _nipPushUndo();
-  // Mark as pickup if it's the first and only bar
-  if (NIP.barIdx === 0) {
-    bar.pickup      = true;
-    bar.pickupBeats = curBeat;
-  }
-  // Move cursor to the next bar
+  if (NIP.barIdx === 0) { bar.pickup = true; bar.pickupBeats = curBeat; }
   NIP.barIdx++;
+  NIP.noteIdx    = null;
+  NIP.highlightId = null;
   if (NIP.barIdx >= song.bars.length) _nipAppendBar(song);
   _nipSaveRender(song);
   _nipUpdateState();
 }
 
+// Position cursor at a bar (insert mode, cursor at end of its current content).
 function nipMoveCursorTo(barIdx) {
-  NIP.barIdx = barIdx;
-  NIP.lastNoteRef = null;
-  const song = songs[state.song];
-  if (song && barIdx < song.bars.length && song.bars[barIdx].notes.length) {
-    const bar = song.bars[barIdx];
-    NIP.lastNoteRef = { barIdx, noteId: bar.notes[bar.notes.length - 1].id };
-  }
+  NIP.barIdx     = barIdx;
+  NIP.noteIdx    = null;
+  NIP.highlightId = null;
   render();
   _nipUpdateState();
 }
@@ -3145,15 +3394,19 @@ function _nipUpdateState() {
   document.getElementById('nipDot')?.classList.toggle('active', NIP.dot);
   document.getElementById('nipFlat')?.classList.toggle('active', NIP.accidental === 'flat');
   document.getElementById('nipSharp')?.classList.toggle('active', NIP.accidental === 'sharp');
-  document.getElementById('nipTie')?.classList.toggle('active', NIP.tieNext);
+
+  const activeNote = nipActiveNote();
+  const tieOn = !!NIP.pendingTieGid || activeNote?.tie?.type === 'start';
+  document.getElementById('nipTie')?.classList.toggle('active', tieOn);
 
   const hint = document.getElementById('nipHint');
   if (!hint) return;
-  const a = NIP.accidental === 'flat' ? '♭' : NIP.accidental === 'sharp' ? '♯' : '';
+  const a     = NIP.accidental === 'flat' ? '♭' : NIP.accidental === 'sharp' ? '♯' : '';
+  const mHint = NIP.noteIdx !== null ? ' — selected' : '';
   if (NIP.barIdx === null) {
-    hint.textContent = 'Click a bar to position cursor, or press 1–7 to append';
+    hint.textContent = 'Click a bar or note to start — or press 1–7 to append';
   } else {
-    hint.textContent = `${a}${NIP.duration}${NIP.dot ? '.' : ''}${NIP.tieNext ? ' ~tie' : ''} — press 1–7 for note, 0 for rest`;
+    hint.textContent = `${a}${NIP.duration}${NIP.dot ? '.' : ''}${mHint} — 1–7 note, 0 rest, ←→ navigate`;
   }
 }
 
@@ -3168,7 +3421,7 @@ function nipPanelShow(on) {
   } else {
     panel.classList.remove('open');
     document.body.classList.remove('nip-open');
-    NIP.barIdx = null;
+    NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
   }
 }
 
@@ -3196,43 +3449,57 @@ document.addEventListener('keydown', e => {
     case 'Numpad0':
       nipInsertRest(); e.preventDefault(); return;
     case 'NumpadEnter':
-      NIP.tieNext = !NIP.tieNext; _nipUpdateState(); e.preventDefault(); return;
+      nipSetTie(); e.preventDefault(); return;       // immediate tie on active note
     case 'NumpadDivide':
       nipInsertBarline(); e.preventDefault(); return;
     case 'Numpad9':
-      NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  NIP.rest = false; _nipUpdateState(); e.preventDefault(); return;
+      NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  _nipUpdateState(); e.preventDefault(); return;
     case 'Numpad8':
-      NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; NIP.rest = false; _nipUpdateState(); e.preventDefault(); return;
+      NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; _nipUpdateState(); e.preventDefault(); return;
     case 'Numpad7':
-      NIP.accidental = null; NIP.rest = false; _nipUpdateState(); e.preventDefault(); return;
+      NIP.accidental = null; _nipUpdateState(); e.preventDefault(); return;
   }
 
   // Undo / redo
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { nipUndo(); e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { nipRedo(); e.preventDefault(); return; }
 
-  // Octave shift
+  // Octave shift (Ctrl/Cmd + arrow)
   if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowUp')   { nipShiftOctave(1);  e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'ArrowDown') { nipShiftOctave(-1); e.preventDefault(); return; }
 
   if (e.ctrlKey || e.metaKey || e.altKey) return;
 
+  // Navigation
+  if (e.code === 'ArrowLeft')  { nipNavigate(-1); e.preventDefault(); return; }
+  if (e.code === 'ArrowRight') { nipNavigate(1);  e.preventDefault(); return; }
+
+  // Degree nudge (plain arrow up/down)
+  if (e.code === 'ArrowUp')   { nipNudgeDegree(1);  e.preventDefault(); return; }
+  if (e.code === 'ArrowDown') { nipNudgeDegree(-1); e.preventDefault(); return; }
+
   // Degree 1–7
   if (e.code >= 'Digit1' && e.code <= 'Digit7') {
     nipCommit(parseInt(e.key), 0); e.preventDefault(); return;
   }
+  // Digit 8 = degree 1 in higher octave (explicit, skips auto-octave)
+  if (e.code === 'Digit8') { nipCommit(1, 1); e.preventDefault(); return; }
   // Digit 9 = enharmonic respell
   if (e.code === 'Digit9') { nipRespell(); e.preventDefault(); return; }
 
   // Accidental shortcuts
-  if (e.key === 'b') { NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  NIP.rest = false; _nipUpdateState(); e.preventDefault(); return; }
-  if (e.key === '#') { NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; NIP.rest = false; _nipUpdateState(); e.preventDefault(); return; }
+  if (e.key === 'b') { NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  _nipUpdateState(); e.preventDefault(); return; }
+  if (e.key === '#') { NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; _nipUpdateState(); e.preventDefault(); return; }
 
-  // Backspace = delete last note
-  if (e.code === 'Backspace') { nipDelete(); e.preventDefault(); return; }
+  // Delete = turn active note into rest; Backspace = remove note
+  if (e.code === 'Delete')    { nipForwardDelete(); e.preventDefault(); return; }
+  if (e.code === 'Backspace') { nipBackspace();     e.preventDefault(); return; }
 
   // Escape = deactivate cursor
-  if (e.code === 'Escape') { NIP.barIdx = null; render(); _nipUpdateState(); }
+  if (e.code === 'Escape') {
+    NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null;
+    render(); _nipUpdateState();
+  }
 });
 
 // ── NIP button event listeners ─────────────────────────────────────────────
@@ -3243,16 +3510,16 @@ document.querySelectorAll('.nip-dur').forEach(btn =>
 document.querySelectorAll('.nip-deg-btn').forEach(btn =>
   btn.addEventListener('click', () => nipCommit(parseInt(btn.dataset.deg), 0)));
 
-document.getElementById('nipDot')?.addEventListener('click',    () => { NIP.dot      = !NIP.dot;                           _nipUpdateState(); });
-document.getElementById('nipFlat')?.addEventListener('click',    () => { NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  NIP.rest = false; _nipUpdateState(); });
-document.getElementById('nipSharp')?.addEventListener('click',   () => { NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; NIP.rest = false; _nipUpdateState(); });
-document.getElementById('nipNatural')?.addEventListener('click', () => { NIP.accidental = null; NIP.rest = false; _nipUpdateState(); });
+document.getElementById('nipDot')?.addEventListener('click',    () => { NIP.dot = !NIP.dot; _nipUpdateState(); });
+document.getElementById('nipFlat')?.addEventListener('click',    () => { NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  _nipUpdateState(); });
+document.getElementById('nipSharp')?.addEventListener('click',   () => { NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; _nipUpdateState(); });
+document.getElementById('nipNatural')?.addEventListener('click', () => { NIP.accidental = null; _nipUpdateState(); });
 document.getElementById('nipRest')?.addEventListener('click', nipInsertRest);
-document.getElementById('nipTie')?.addEventListener('click',    () => { NIP.tieNext = !NIP.tieNext;                        _nipUpdateState(); });
+document.getElementById('nipTie')?.addEventListener('click',    nipSetTie);
 document.getElementById('nipRespell')?.addEventListener('click', nipRespell);
 document.getElementById('nipOctUp')?.addEventListener('click',  () => nipShiftOctave(1));
 document.getElementById('nipOctDn')?.addEventListener('click',  () => nipShiftOctave(-1));
-document.getElementById('nipDelete')?.addEventListener('click',  nipDelete);
+document.getElementById('nipDelete')?.addEventListener('click',  nipBackspace);
 document.getElementById('nipUndo')?.addEventListener('click',    nipUndo);
 document.getElementById('nipRedo')?.addEventListener('click',    nipRedo);
 document.getElementById('nipBarline')?.addEventListener('click', nipInsertBarline);
