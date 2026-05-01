@@ -615,7 +615,7 @@
     <button class="nip-btn" id="nipSharp"   title="Sharp (Numpad 8)">♯<span class="nip-key">8</span></button>
     <button class="nip-btn" id="nipNatural" title="Natural / clear accidental (Numpad 7)">♮<span class="nip-key">7</span></button>
     <div class="nip-sep"></div>
-    <button class="nip-btn" id="nipRest"    title="Rest (Numpad 0)">𝄽<span class="nip-key">0</span></button>
+    <button class="nip-btn" id="nipRest"    title="Insert rest of selected duration (Numpad 0)">𝄽<span class="nip-key">0</span></button>
     <div class="nip-sep"></div>
     <button class="nip-btn" id="nipTie"     title="Tie next note (Numpad Enter)">⌒ tie<span class="nip-key">↵</span></button>
   </div>
@@ -2810,7 +2810,6 @@ let NIP = {
   duration:    'crotchet',
   dot:         false,
   accidental:  null,
-  rest:        false,
   tieNext:     false,
   lastNoteRef: null,
 };
@@ -2957,18 +2956,19 @@ function _nipAppendBar(song) {
   });
 }
 
-function nipCommit(degree, octaveShift) {
+function nipInsertRest() { nipCommit(null, 0, true); }
+
+function nipCommit(degree, octaveShift, isRest = false) {
   const song = songs[state.song];
   if (!song) return;
   if (NIP.barIdx === null) NIP.barIdx = song.bars.length; // append mode
 
   _nipPushUndo();
 
-  const baseBeat  = BEAT_VAL[NIP.duration];
+  const baseBeat   = BEAT_VAL[NIP.duration];
   const totalBeats = NIP.dot ? baseBeat * 1.5 : baseBeat;
-  const isRest    = NIP.rest;
-  const acc       = isRest ? null : (NIP.accidental ?? null);
-  const oct       = isRest ? 0    : (octaveShift ?? 0);
+  const acc        = isRest ? null : (NIP.accidental ?? null);
+  const oct        = isRest ? 0    : (octaveShift ?? 0);
 
   let remaining = Math.round(totalBeats * 1000) / 1000;
   let isFirst   = true;
@@ -3034,7 +3034,6 @@ function nipCommit(degree, octaveShift) {
 
   NIP.tieNext    = false;
   NIP.accidental = null;
-  NIP.rest       = false;
   _nipSaveRender(song);
   _nipUpdateState();
 }
@@ -3141,18 +3140,15 @@ function _nipUpdateState() {
   document.getElementById('nipDot')?.classList.toggle('active', NIP.dot);
   document.getElementById('nipFlat')?.classList.toggle('active', NIP.accidental === 'flat');
   document.getElementById('nipSharp')?.classList.toggle('active', NIP.accidental === 'sharp');
-  document.getElementById('nipRest')?.classList.toggle('active', NIP.rest);
   document.getElementById('nipTie')?.classList.toggle('active', NIP.tieNext);
 
   const hint = document.getElementById('nipHint');
   if (!hint) return;
+  const a = NIP.accidental === 'flat' ? '♭' : NIP.accidental === 'sharp' ? '♯' : '';
   if (NIP.barIdx === null) {
     hint.textContent = 'Click a bar to position cursor, or press 1–7 to append';
-  } else if (NIP.rest) {
-    hint.textContent = `Rest · ${NIP.duration}${NIP.dot ? '.' : ''} — press 1–7 to insert`;
   } else {
-    const a = NIP.accidental === 'flat' ? '♭' : NIP.accidental === 'sharp' ? '♯' : '';
-    hint.textContent = `${a}${NIP.duration}${NIP.dot ? '.' : ''}${NIP.tieNext ? ' ~tie' : ''} — press 1–7 to enter degree`;
+    hint.textContent = `${a}${NIP.duration}${NIP.dot ? '.' : ''}${NIP.tieNext ? ' ~tie' : ''} — press 1–7 for note, 0 for rest`;
   }
 }
 
@@ -3193,7 +3189,7 @@ document.addEventListener('keydown', e => {
     case 'NumpadDecimal': case 'NumpadSeparator':
       NIP.dot = !NIP.dot; _nipUpdateState(); e.preventDefault(); return;
     case 'Numpad0':
-      NIP.rest = !NIP.rest; NIP.accidental = null; _nipUpdateState(); e.preventDefault(); return;
+      nipInsertRest(); e.preventDefault(); return;
     case 'NumpadEnter':
       NIP.tieNext = !NIP.tieNext; _nipUpdateState(); e.preventDefault(); return;
     case 'NumpadDivide':
@@ -3246,7 +3242,7 @@ document.getElementById('nipDot')?.addEventListener('click',    () => { NIP.dot 
 document.getElementById('nipFlat')?.addEventListener('click',    () => { NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  NIP.rest = false; _nipUpdateState(); });
 document.getElementById('nipSharp')?.addEventListener('click',   () => { NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; NIP.rest = false; _nipUpdateState(); });
 document.getElementById('nipNatural')?.addEventListener('click', () => { NIP.accidental = null; NIP.rest = false; _nipUpdateState(); });
-document.getElementById('nipRest')?.addEventListener('click',   () => { NIP.rest    = !NIP.rest;   NIP.accidental = null; _nipUpdateState(); });
+document.getElementById('nipRest')?.addEventListener('click', nipInsertRest);
 document.getElementById('nipTie')?.addEventListener('click',    () => { NIP.tieNext = !NIP.tieNext;                        _nipUpdateState(); });
 document.getElementById('nipRespell')?.addEventListener('click', nipRespell);
 document.getElementById('nipOctUp')?.addEventListener('click',  () => nipShiftOctave(1));
