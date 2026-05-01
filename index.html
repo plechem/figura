@@ -2503,6 +2503,7 @@ function render() {
             NIP.barIdx     = capturedIdx;
             NIP.noteIdx    = bar.notes.indexOf(closest);
             NIP.highlightId = null;
+            _nipSyncFromNote(closest);
             render();
             _nipUpdateState();
           } else {
@@ -3019,6 +3020,76 @@ function _nipNewId() {
   return `n-${uid}`;
 }
 
+// Sync the palette (NIP.duration / .dot / .accidental) to reflect a note's
+// properties so the user sees its current state and can tweak immediately.
+function _nipSyncFromNote(note) {
+  if (!note || note.type === 'rest') return;
+  NIP.duration   = note.duration.base;
+  NIP.dot        = (note.duration.dots ?? 0) > 0;
+  NIP.accidental = note.accidental ?? null;
+}
+
+// Change the duration of the selected note in place.
+// If the note shrinks, freed beats become rests after it.
+// If the note grows, following rests are consumed (fails silently if insufficient).
+function nipMutateSelectedDuration(newBase, newDot) {
+  const song = songs[state.song];
+  if (!song || NIP.noteIdx === null || NIP.barIdx === null) return;
+  const bar  = song.bars[NIP.barIdx];
+  const note = bar?.notes[NIP.noteIdx];
+  if (!note || note.type === 'rest') return;
+
+  const newBeats = BEAT_VAL[newBase] * (newDot ? 1.5 : 1);
+  const oldBeats = BEAT_VAL[note.duration.base] * ((note.duration.dots ?? 0) > 0 ? 1.5 : 1);
+  const delta    = Math.round((newBeats - oldBeats) * 1000) / 1000;
+
+  if (Math.abs(delta) < 0.001) {
+    // Same beat count — just change the notation (e.g. dotted semiquaver ↔ dotted semiquaver)
+    _nipPushUndo();
+    note.duration = { base: newBase, dots: newDot ? 1 : 0, tuplet: null };
+    NIP.duration = newBase; NIP.dot = newDot;
+    _nipSaveRender(song); _nipUpdateState(); return;
+  }
+
+  if (delta < 0) {
+    // Shrinking: insert rest(s) for freed beats immediately after the note
+    _nipPushUndo();
+    note.duration = { base: newBase, dots: newDot ? 1 : 0, tuplet: null };
+    const freed = beatsToNotes(-delta);
+    const rests = freed.map(p => ({
+      id: _nipNewId(), type: 'rest',
+      duration: { base: p.base, dots: p.dot ? 1 : 0, tuplet: null },
+      tie: { type: null, groupId: null },
+    }));
+    bar.notes.splice(NIP.noteIdx + 1, 0, ...rests);
+  } else {
+    // Growing: consume following rests to absorb extra beats
+    let available = 0, restCount = 0;
+    for (let j = NIP.noteIdx + 1; j < bar.notes.length; j++) {
+      if (bar.notes[j].type !== 'rest') break;
+      available = Math.round((available + BEAT_VAL[bar.notes[j].duration.base]
+        * ((bar.notes[j].duration.dots ?? 0) > 0 ? 1.5 : 1)) * 1000) / 1000;
+      restCount++;
+      if (available >= delta - 0.001) break;
+    }
+    if (available < delta - 0.001) return; // not enough rests — silently refuse
+    _nipPushUndo();
+    note.duration = { base: newBase, dots: newDot ? 1 : 0, tuplet: null };
+    bar.notes.splice(NIP.noteIdx + 1, restCount);
+    const leftover = Math.round((available - delta) * 1000) / 1000;
+    if (leftover > 0.001) {
+      const leftovers = beatsToNotes(leftover).map(p => ({
+        id: _nipNewId(), type: 'rest',
+        duration: { base: p.base, dots: p.dot ? 1 : 0, tuplet: null },
+        tie: { type: null, groupId: null },
+      }));
+      bar.notes.splice(NIP.noteIdx + 1, 0, ...leftovers);
+    }
+  }
+  NIP.duration = newBase; NIP.dot = newDot;
+  _nipSaveRender(song); _nipUpdateState();
+}
+
 // Return the note that is currently "active" — selected in select mode, or
 // the last-entered note (highlightId) in insert mode.
 function nipActiveNote() {
@@ -3365,6 +3436,10 @@ function nipNavigate(dir) {
       }
     }
   }
+  // Sync palette to the newly selected note so tweaks feel immediate
+  if (NIP.noteIdx !== null && NIP.barIdx !== null) {
+    _nipSyncFromNote(songs[state.song]?.bars[NIP.barIdx]?.notes[NIP.noteIdx]);
+  }
   render();
   _nipUpdateState();
 }
@@ -3448,13 +3523,17 @@ document.addEventListener('keydown', e => {
 
   // Numpad duration
   if (_NUMPAD_DUR[e.code]) {
-    NIP.duration = _NUMPAD_DUR[e.code];
-    _nipUpdateState(); e.preventDefault(); return;
+    const d = _NUMPAD_DUR[e.code];
+    if (NIP.noteIdx !== null) { nipMutateSelectedDuration(d, NIP.dot); }
+    else { NIP.duration = d; _nipUpdateState(); }
+    e.preventDefault(); return;
   }
 
   switch (e.code) {
     case 'NumpadDecimal': case 'NumpadSeparator':
-      NIP.dot = !NIP.dot; _nipUpdateState(); e.preventDefault(); return;
+      if (NIP.noteIdx !== null) { nipMutateSelectedDuration(NIP.duration, !NIP.dot); }
+      else { NIP.dot = !NIP.dot; _nipUpdateState(); }
+      e.preventDefault(); return;
     case 'Numpad0':
       nipInsertRest(); e.preventDefault(); return;
     case 'NumpadEnter':
@@ -3514,12 +3593,19 @@ document.addEventListener('keydown', e => {
 // ── NIP button event listeners ─────────────────────────────────────────────
 
 document.querySelectorAll('.nip-dur').forEach(btn =>
-  btn.addEventListener('click', () => { NIP.duration = btn.dataset.dur; _nipUpdateState(); }));
+  btn.addEventListener('click', () => {
+    const d = btn.dataset.dur;
+    if (NIP.noteIdx !== null) nipMutateSelectedDuration(d, NIP.dot);
+    else { NIP.duration = d; _nipUpdateState(); }
+  }));
 
 document.querySelectorAll('.nip-deg-btn').forEach(btn =>
   btn.addEventListener('click', () => nipCommit(parseInt(btn.dataset.deg), 0)));
 
-document.getElementById('nipDot')?.addEventListener('click',    () => { NIP.dot = !NIP.dot; _nipUpdateState(); });
+document.getElementById('nipDot')?.addEventListener('click', () => {
+  if (NIP.noteIdx !== null) nipMutateSelectedDuration(NIP.duration, !NIP.dot);
+  else { NIP.dot = !NIP.dot; _nipUpdateState(); }
+});
 document.getElementById('nipFlat')?.addEventListener('click',    () => { NIP.accidental = NIP.accidental === 'flat'  ? null : 'flat';  _nipUpdateState(); });
 document.getElementById('nipSharp')?.addEventListener('click',   () => { NIP.accidental = NIP.accidental === 'sharp' ? null : 'sharp'; _nipUpdateState(); });
 document.getElementById('nipNatural')?.addEventListener('click', () => { NIP.accidental = null; _nipUpdateState(); });
