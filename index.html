@@ -2696,7 +2696,7 @@ function updateEditToolbar() {
   }
   nipPanelShow(isUserSong);
   if (!isUserSong) {
-    NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
+    NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null; NIP.pendingTieDegree = null; NIP.pendingTieOct = null;
     _undoStack = [];
     _redoStack = [];
     _nipUpdateUndoRedo();
@@ -2812,7 +2812,7 @@ document.getElementById('songSelect').addEventListener('change', e => {
   state.key = doc.key;
   document.getElementById('keySelect').value = doc.key;
   saveState();
-  NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
+  NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null; NIP.pendingTieDegree = null; NIP.pendingTieOct = null;
   _undoStack = [];
   _redoStack = [];
   updateEditToolbar();
@@ -2858,7 +2858,9 @@ let NIP = {
   duration:      'crotchet',
   dot:           false,
   accidental:    null,
-  pendingTieGid: null,   // groupId of a just-tied note; next commit uses tie-end
+  pendingTieGid:    null,   // groupId of a just-tied note; next commit uses tie-end
+  pendingTieDegree: null,   // degree of the pending-tie source note
+  pendingTieOct:    null,   // octaveShift of the pending-tie source note
 };
 let _undoStack = [];
 let _redoStack = [];
@@ -2937,7 +2939,7 @@ function nipUndo() {
   _redoStack.push(JSON.stringify(song.bars));
   song.bars = JSON.parse(_undoStack.pop());
   song.bars.forEach((b, i) => { b.index = i; });
-  NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
+  NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null; NIP.pendingTieDegree = null; NIP.pendingTieOct = null;
   _nipSaveRender(song);
   _nipUpdateUndoRedo();
 }
@@ -2948,7 +2950,7 @@ function nipRedo() {
   _undoStack.push(JSON.stringify(song.bars));
   song.bars = JSON.parse(_redoStack.pop());
   song.bars.forEach((b, i) => { b.index = i; });
-  NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
+  NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null; NIP.pendingTieDegree = null; NIP.pendingTieOct = null;
   _nipSaveRender(song);
   _nipUpdateUndoRedo();
 }
@@ -3225,7 +3227,9 @@ function nipCommit(degree, octaveShift, isRest = false) {
   const oct        = isRest ? 0    : octaveShift;
 
   const tieGid      = crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now().toString(36)}`;
-  const hasPending  = !!NIP.pendingTieGid;
+  const pitchMatchesPending = !isRest && !!NIP.pendingTieGid &&
+    degree === NIP.pendingTieDegree && (octaveShift ?? 0) === (NIP.pendingTieOct ?? 0);
+  const hasPending  = pitchMatchesPending;
   const pendingGid  = NIP.pendingTieGid;
 
   let remaining    = Math.round(totalBeats * 1000) / 1000;
@@ -3282,8 +3286,12 @@ function nipCommit(degree, octaveShift, isRest = false) {
   NIP.barIdx       = lastBarIdx;  // bar where the last note landed
   NIP.noteIdx      = null;        // insert mode, cursor at end
   NIP.highlightId  = lastNoteId;  // highlight the just-entered note
-  NIP.pendingTieGid = null;
-  NIP.accidental   = null;
+  if (pitchMatchesPending) {
+    NIP.pendingTieGid    = null;
+    NIP.pendingTieDegree = null;
+    NIP.pendingTieOct    = null;
+  }
+  NIP.accidental = null;
   _nipSaveRender(song);
   _nipUpdateState();
 }
@@ -3296,7 +3304,9 @@ function nipBackspace() {
   if (NIP.noteIdx !== null && NIP.barIdx !== null) {
     const bar = song.bars[NIP.barIdx];
     if (!bar || NIP.noteIdx >= bar.notes.length) return;
+    const dying = bar.notes[NIP.noteIdx];
     _nipPushUndo();
+    _nipCleanupDeletedNote(song, NIP.barIdx, NIP.noteIdx, dying);
     bar.notes.splice(NIP.noteIdx, 1);
     if (bar.notes.length === 0 && NIP.barIdx === song.bars.length - 1 && NIP.barIdx > 0) {
       song.bars.pop();
@@ -3315,6 +3325,8 @@ function nipBackspace() {
   if (bi < 0) return;
   _nipPushUndo();
   const bar = song.bars[bi];
+  const dying = bar.notes[bar.notes.length - 1];
+  _nipCleanupDeletedNote(song, bi, bar.notes.length - 1, dying);
   bar.notes.pop();
   NIP.barIdx     = bi;
   NIP.highlightId = bar.notes.length ? bar.notes[bar.notes.length - 1].id : null;
@@ -3334,6 +3346,8 @@ function nipForwardDelete() {
   const note = nipActiveNote();
   if (!note || note.type === 'rest') return;
   _nipPushUndo();
+  const pos = _nipGetActiveNotePos(song);
+  if (pos) _nipCleanupDeletedNote(song, pos.bi, pos.ni, note);
   note.type        = 'rest';
   note.degree      = undefined;
   note.accidental  = undefined;
@@ -3370,21 +3384,143 @@ function nipNudgeDegree(dir) {
   _nipSaveRender(song);
 }
 
-// Immediately mark the active note as tie-start (or toggle it off); sets pendingTieGid
-// so the next commit enters with tie-end.
+// ── Tie helpers ──────────────────────────────────────────────────────────────
+
+function _nipFindNotePos(song, noteId) {
+  for (let bi = 0; bi < song.bars.length; bi++) {
+    const notes = song.bars[bi].notes;
+    for (let ni = 0; ni < notes.length; ni++) {
+      if (notes[ni].id === noteId) return { bi, ni };
+    }
+  }
+  return null;
+}
+
+function _nipGetActiveNotePos(song) {
+  if (NIP.barIdx !== null && NIP.noteIdx !== null)
+    return { bi: NIP.barIdx, ni: NIP.noteIdx };
+  if (NIP.highlightId) return _nipFindNotePos(song, NIP.highlightId);
+  return null;
+}
+
+// Find the first note after position {bi, ni} with matching degree and octaveShift.
+function _nipFindNextPitchMatch(song, bi, ni, degree, oct) {
+  for (let b = bi; b < song.bars.length; b++) {
+    const notes = song.bars[b].notes;
+    const start = b === bi ? ni + 1 : 0;
+    for (let n = start; n < notes.length; n++) {
+      const note = notes[n];
+      if (note.type === 'note' && note.degree === degree && (note.octaveShift ?? 0) === (oct ?? 0))
+        return { bi: b, ni: n, note };
+    }
+  }
+  return null;
+}
+
+// Find the first node after {bi, startNi} that shares the same tie groupId.
+function _nipFindNextTieNode(song, gid, bi, startNi) {
+  for (let b = bi; b < song.bars.length; b++) {
+    const notes = song.bars[b].notes;
+    const start = b === bi ? startNi : 0;
+    for (let n = start; n < notes.length; n++) {
+      if (notes[n].tie?.groupId === gid) return { bi: b, ni: n, note: notes[n] };
+    }
+  }
+  return null;
+}
+
+// Find the last node before {bi, startNi} that shares the same tie groupId.
+function _nipFindPrevTieNode(song, gid, bi, startNi) {
+  for (let b = bi; b >= 0; b--) {
+    const notes = song.bars[b].notes;
+    const end = b === bi ? startNi : notes.length - 1;
+    for (let n = end; n >= 0; n--) {
+      if (notes[n].tie?.groupId === gid) return { bi: b, ni: n, note: notes[n] };
+    }
+  }
+  return null;
+}
+
+// Fix up tie references when the note at {bi, ni} is about to be deleted or silenced.
+// Must be called BEFORE removing the note from the bar.
+function _nipCleanupDeletedNote(song, bi, ni, note) {
+  if (note.type !== 'note' || !note.tie?.groupId) return;
+  const gid = note.tie.groupId;
+  const tt  = note.tie.type;
+
+  // Note tied forward (start/continue): demote the next chain node.
+  if (tt === 'start' || tt === 'continue') {
+    const fwd = _nipFindNextTieNode(song, gid, bi, ni + 1);
+    if (fwd) {
+      fwd.note.tie = fwd.note.tie.type === 'continue'
+        ? { type: 'start', groupId: gid }
+        : { type: null,    groupId: null };
+    }
+  }
+
+  // Note tied backward (end/continue): retarget the chain to next matching pitch.
+  if (tt === 'end' || tt === 'continue') {
+    const match = _nipFindNextPitchMatch(song, bi, ni, note.degree, note.octaveShift ?? 0);
+    if (match && match.note.tie?.groupId !== gid) {
+      match.note.tie = match.note.tie?.type === 'start'
+        ? { type: 'continue', groupId: gid }
+        : { type: 'end',      groupId: gid };
+    } else if (!match) {
+      const bwd = _nipFindPrevTieNode(song, gid, bi, ni - 1);
+      if (bwd) {
+        bwd.note.tie = bwd.note.tie.type === 'continue'
+          ? { type: 'end', groupId: gid }
+          : { type: null,  groupId: null };
+      }
+    }
+  }
+}
+
+// Mark the active note as tie-start (or toggle it off).
+// Auto-links to the next existing note with matching pitch; if none exists yet,
+// sets pendingTieGid so the next inserted matching note receives the tie-end.
 function nipSetTie() {
   const song = songs[state.song];
   if (!song) return;
   const note = nipActiveNote();
   if (!note || note.type === 'rest') return;
   _nipPushUndo();
+
   if (note.tie?.type === 'start') {
-    note.tie       = { type: null, groupId: null };
-    NIP.pendingTieGid = null;
+    // Toggle off: clear start and any auto-linked end.
+    const gid = note.tie.groupId;
+    const pos = _nipGetActiveNotePos(song);
+    if (gid && pos) {
+      const fwd = _nipFindNextTieNode(song, gid, pos.bi, pos.ni + 1);
+      if (fwd) {
+        fwd.note.tie = fwd.note.tie.type === 'continue'
+          ? { type: 'start', groupId: gid }
+          : { type: null,    groupId: null };
+      }
+    }
+    note.tie             = { type: null, groupId: null };
+    NIP.pendingTieGid    = null;
+    NIP.pendingTieDegree = null;
+    NIP.pendingTieOct    = null;
   } else {
+    // Set as tie-start, then auto-link to the next existing pitch match.
     const gid = note.tie?.groupId || (crypto.randomUUID ? crypto.randomUUID() : `tg-${Date.now()}`);
-    note.tie       = { type: 'start', groupId: gid };
-    NIP.pendingTieGid = gid;
+    note.tie = { type: 'start', groupId: gid };
+
+    const pos   = _nipGetActiveNotePos(song);
+    const match = pos ? _nipFindNextPitchMatch(song, pos.bi, pos.ni, note.degree, note.octaveShift ?? 0) : null;
+    if (match) {
+      match.note.tie = match.note.tie?.type === 'start'
+        ? { type: 'continue', groupId: gid }
+        : { type: 'end',      groupId: gid };
+      NIP.pendingTieGid    = null;
+      NIP.pendingTieDegree = null;
+      NIP.pendingTieOct    = null;
+    } else {
+      NIP.pendingTieGid    = gid;
+      NIP.pendingTieDegree = note.degree;
+      NIP.pendingTieOct    = note.octaveShift ?? 0;
+    }
   }
   _nipSaveRender(song);
   _nipUpdateState();
@@ -3532,7 +3668,7 @@ function nipPanelShow(on) {
   } else {
     panel.classList.remove('open');
     document.body.classList.remove('nip-open');
-    NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null;
+    NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null; NIP.pendingTieDegree = null; NIP.pendingTieOct = null;
   }
 }
 
