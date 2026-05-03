@@ -1727,7 +1727,9 @@ function drawTieArc(svg, sx, ex, arcY) {
 function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false,
                    suppressTieStarts = new Set(), suppressTieEnds = new Set(), rowHeight = L.H,
                    barWidth = L.W, barNumber = 0, noteStyle = 'heads', chordPosition = 'below',
-                   cursorBeat = null, highlightId = null, cipCursorBeat = null) {
+                   cursorBeat = null, highlightId = null,
+                   rowExtAbove = null, rowExtBelow = null,
+                   cipCursorBeat = null) {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -2523,7 +2525,7 @@ function render() {
           suppressStarts[barIdx] ?? new Set(),
           suppressEnds[barIdx]   ?? new Set(),
           rowH, capturedBarW, 0, state.noteStyle, state.chordPos, cursorBeat, highlightId,
-          cipCursorBeat)
+          rowExtraAbove, rowExtraBelow, cipCursorBeat)
       );
       if (DOC.source === 'user') {
         barWrap.classList.add('bar-editable');
