@@ -541,6 +541,33 @@
     .nip-hint { font-size: 0.73rem; opacity: 0.5; margin-left: 6px; font-style: italic; }
     @keyframes nip-blink { 0%,100%{opacity:1} 50%{opacity:0} }
     .nip-cursor { animation: nip-blink 1s step-end infinite; }
+
+    /* ── Chord input (CIP) ────────────────────────────────────────────── */
+    @keyframes cip-blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .cip-cursor { animation: cip-blink 1s step-end infinite; }
+    body.cip-open .bar-editable svg { cursor: crosshair; user-select: none; }
+    #cip-input-wrap {
+      position: fixed;
+      display: none;
+      z-index: 200;
+      pointer-events: none;
+    }
+    #cip-input {
+      pointer-events: all;
+      font-size: 15px;
+      width: 88px;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1.5px solid var(--accent);
+      border-radius: 4px;
+      padding: 2px 6px;
+      outline: none;
+      font-family: system-ui, sans-serif;
+      letter-spacing: 0.03em;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.22);
+      transform: translateX(-50%);
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -652,6 +679,12 @@
     <div class="nip-sep"></div>
     <span class="nip-hint" id="nipHint">Select duration, then press 1–7</span>
   </div>
+</div>
+
+<!-- ── Chord input floating overlay ──────────────────────────────────── -->
+<div id="cip-input-wrap">
+  <input id="cip-input" type="text" autocomplete="off" autocorrect="off"
+         spellcheck="false" placeholder="chord" maxlength="24">
 </div>
 
 <div class="modal-overlay" id="newSongModal">
@@ -1212,10 +1245,11 @@ function formatChordRoot(chord, format, key) {
   let root = '';
   if (format === 'nashville') {
     root = accStr + degree;
-    if      (quality === 'minor')      root += 'm';
-    else if (quality === 'diminished') root += '°';
-    else if (quality === 'augmented')  root += '+';
-    else if (quality === 'dominant')   root += '7';
+    if      (quality === 'minor')          root += 'm';
+    else if (quality === 'diminished')     root += '°';
+    else if (quality === 'augmented')      root += '+';
+    else if (quality === 'dominant')       root += '7';
+    else if (quality === 'halfDiminished') root += 'ø';
   } else if (format === 'roman') {
     let num = ROMAN[degree] || String(degree);
     const lower = ['minor','diminished','halfDiminished'].includes(quality);
@@ -1237,9 +1271,11 @@ function formatChordRoot(chord, format, key) {
 // Numbers → plain ("9", "13"); { num, acc } → parenthesised accidental ("(♭9)");
 // { num, add:true } → "(add9)".
 function formatExtItem(e) {
+  if (typeof e === 'string') return e;
   if (typeof e === 'number') return String(e);
   const acc = e.acc === 'flat' ? '♭' : e.acc === 'sharp' ? '♯' : '';
   if (e.add) return `(add${e.num})`;
+  if (e.sus) return `sus${e.num}`;
   return e.acc ? `(${acc}${e.num})` : String(e.num);
 }
 
@@ -1691,8 +1727,7 @@ function drawTieArc(svg, sx, ex, arcY) {
 function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowEnd = false,
                    suppressTieStarts = new Set(), suppressTieEnds = new Set(), rowHeight = L.H,
                    barWidth = L.W, barNumber = 0, noteStyle = 'heads', chordPosition = 'below',
-                   cursorBeat = null, highlightId = null,
-                   rowExtAbove = null, rowExtBelow = null) {
+                   cursorBeat = null, highlightId = null, cipCursorBeat = null) {
   const ts = bar.timeSignature;
   const noteStart  = showTS ? L.NOTE_START : L.NOTE_START_NO_TS;
   // Note area: fixed left margin from barline so beat-1 is always at the same x,
@@ -2026,6 +2061,16 @@ function renderBar(bar, key, chordFormat, showTS = false, isLast = false, isRowE
     const chordX = beatToOpticalX(chord.beatOffset, laid, NOTE_AREA_LEFT, NOTE_AREA_RIGHT, beatOffset, beatRange);
     drawChordSymbol(svg, chordX, lCHORD_Y, chord, chordFormat, key, chordFont);
   });
+
+  // ── Chord input (CIP) cursor ──────────────────────────────────────────
+  if (cipCursorBeat !== null) {
+    const cx = beatToOpticalX(cipCursorBeat, laid, NOTE_AREA_LEFT, NOTE_AREA_RIGHT, beatOffset, beatRange);
+    svg.appendChild(el('line', {
+      x1: cx, y1: lCHORD_Y - 11, x2: cx, y2: lCHORD_Y + 11,
+      stroke: 'var(--accent)', 'stroke-width': 2.5, 'stroke-linecap': 'round',
+      class: 'cip-cursor',
+    }));
+  }
 
   // ── Input cursor ───────────────────────────────────────────────────────
   if (cursorBeat !== null) {
@@ -2470,12 +2515,15 @@ function render() {
       const capturedIdx     = barIdx;
       const capturedShowTS  = showTSArr[posInRow];
       const capturedBarW    = barWidths[posInRow];
+      barWrap.dataset.barIdx = barIdx;
+      barWrap.dataset.showTs = String(capturedShowTS);
+      const cipCursorBeat = CIP.active && CIP.barIdx === barIdx ? CIP.beatPos : null;
       barWrap.appendChild(
         renderBar(bar, state.key, state.format, capturedShowTS, isLast, isRowEnd,
           suppressStarts[barIdx] ?? new Set(),
           suppressEnds[barIdx]   ?? new Set(),
           rowH, capturedBarW, 0, state.noteStyle, state.chordPos, cursorBeat, highlightId,
-          rowExtraAbove, rowExtraBelow)
+          cipCursorBeat)
       );
       if (DOC.source === 'user') {
         barWrap.classList.add('bar-editable');
@@ -2484,9 +2532,34 @@ function render() {
         editBtn.textContent = 'Edit';
         editBtn.addEventListener('click', (e) => { e.stopPropagation(); openBarEditor(capturedIdx); });
         barWrap.appendChild(editBtn);
-        // Click on bar: detect note hit → select mode; else → insert mode
         barWrap.addEventListener('click', e => {
           e.stopPropagation();
+
+          // ── CIP mode: click snaps to nearest beat-grid position ─────────
+          if (CIP.active) {
+            const svg = barWrap.querySelector('svg');
+            if (!svg) { cipMoveTo(capturedIdx, 0); return; }
+            const rect = svg.getBoundingClientRect();
+            const vbW  = parseFloat(svg.getAttribute('viewBox').split(' ')[2]);
+            const vbX  = (e.clientX - rect.left) / rect.width * vbW;
+            const grid = cipBeatGrid(bar);
+            const laid = barNotePositions(bar, capturedShowTS, capturedBarW);
+            const isPickup   = bar.pickup && bar.pickupBeats != null;
+            const beatOffset = isPickup ? bar.timeSignature.beats - bar.pickupBeats : 0;
+            const beatRange  = isPickup ? bar.pickupBeats : bar.timeSignature.beats;
+            const naleft  = (capturedShowTS ? L.NOTE_START : L.NOTE_START_NO_TS) + 22;
+            const naright = capturedBarW - 18;
+            let bestBeat = grid[0] ?? 0, bestDist = Infinity;
+            for (const bp of grid) {
+              const bx = beatToOpticalX(bp, laid, naleft, naright, beatOffset, beatRange);
+              const d  = Math.abs(bx - vbX);
+              if (d < bestDist) { bestDist = d; bestBeat = bp; }
+            }
+            cipMoveTo(capturedIdx, bestBeat);
+            return;
+          }
+
+          // ── NIP mode: detect note hit → select mode; else → insert mode ─
           if (!document.getElementById('nipPanel')?.classList.contains('open')) return;
           const svg  = barWrap.querySelector('svg');
           if (!svg) { nipMoveCursorTo(capturedIdx); return; }
@@ -2494,7 +2567,7 @@ function render() {
           const vbW   = parseFloat(svg.getAttribute('viewBox').split(' ')[2]);
           const vbX   = (e.clientX - rect.left) / rect.width * vbW;
           const positions = barNotePositions(bar, capturedShowTS, capturedBarW);
-          const HIT   = 14;  // viewBox units for click radius
+          const HIT   = 14;
           let closest = null, closestDist = HIT;
           for (const { n, x } of positions) {
             const d = Math.abs(vbX - x);
@@ -2535,6 +2608,8 @@ function render() {
 
   document.getElementById('songTitle').textContent = DOC.title;
   document.getElementById('keyLabel').textContent = `Key of ${state.key}`;
+
+  if (CIP.active && CIP.barIdx !== null) _cipPositionInput();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2707,11 +2782,16 @@ function updateEditToolbar() {
   }
   toolbar.innerHTML =
     `<button class="edit-btn" id="newSongBtn">+ New song</button>` +
-    (isUserSong ? `<button class="edit-btn" id="addBarBtn">+ Add bar</button>` : '');
+    (isUserSong ? `<button class="edit-btn" id="addBarBtn">+ Add bar</button>` : '') +
+    (isUserSong ? `<button class="edit-btn" id="cipBtn">♩ Chords</button>` : '');
   document.getElementById('newSongBtn').addEventListener('click', () =>
     document.getElementById('newSongModal').classList.add('open'));
   if (isUserSong) {
     document.getElementById('addBarBtn').addEventListener('click', () => openBarEditor(null));
+    document.getElementById('cipBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      CIP.active ? cipDeactivate() : cipActivate();
+    });
   }
   nipPanelShow(isUserSong);
   if (!isUserSong) {
@@ -3884,6 +3964,250 @@ function nipPanelShow(on) {
     NIP.barIdx = null; NIP.noteIdx = null; NIP.highlightId = null; NIP.pendingTieGid = null; NIP.pendingTieDegree = null; NIP.pendingTieOct = null;
   }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// CHORD INPUT (CIP) — inline chord entry over the score
+// ══════════════════════════════════════════════════════════════════════════
+
+let CIP = {
+  active:  false,
+  barIdx:  null,
+  beatPos: null,
+  dirty:   false,   // true if input text differs from committed chord
+};
+
+// Beat positions available for chord entry in a bar:
+// union of division-grid ticks and note onset beats.
+function cipBeatGrid(bar) {
+  const ts   = bar.timeSignature;
+  const step = 4 / ts.division;
+  const grid = new Set();
+  for (let b = 0; b < ts.beats - 0.001; b = Math.round((b + step) * 1000) / 1000)
+    grid.add(b);
+  let acc = 0;
+  for (const n of bar.notes) {
+    grid.add(Math.round(acc * 1000) / 1000);
+    acc = Math.round((acc + BEAT_VAL[n.duration.base] *
+          (n.duration.dots === 1 ? 1.5 : n.duration.dots === 2 ? 1.75 : 1)) * 1000) / 1000;
+  }
+  return [...grid].sort((a, b) => a - b);
+}
+
+function _cipAllPositions(song) {
+  const all = [];
+  for (let bi = 0; bi < song.bars.length; bi++)
+    for (const bp of cipBeatGrid(song.bars[bi]))
+      all.push([bi, bp]);
+  return all;
+}
+
+// Parse Nashville chord text → structured chord object (or null).
+// Supports: [b|#][1-7][quality][extensions][/[b|#][1-7]]
+function parseChordInput(raw) {
+  let s = raw.trim();
+  if (!s) return null;
+
+  const rootM = s.match(/^([b#]?)([1-7])/);
+  if (!rootM) return null;
+  const accidental = rootM[1] === 'b' ? 'flat' : rootM[1] === '#' ? 'sharp' : null;
+  const degree     = parseInt(rootM[2]);
+  s = s.slice(rootM[0].length);
+
+  // Extract bass before parsing quality (avoids 'sus' confusion)
+  let bass = null;
+  const slashM = s.match(/\/([b#]?)([1-7])$/);
+  if (slashM) {
+    const absB   = parseInt(slashM[2]);
+    const bAcc   = slashM[1] === 'b' ? 'flat' : slashM[1] === '#' ? 'sharp' : null;
+    const relDeg = ((absB - 1 - (degree - 1)) % 7 + 7) % 7 + 1;
+    bass = { degree: relDeg, accidental: bAcc };
+    s    = s.slice(0, s.length - slashM[0].length);
+  }
+
+  // Quality
+  let quality = 'major';
+  if      (/^(ø|m7b5)/i.test(s))     { quality = 'halfDiminished'; s = s.replace(/^(ø|m7b5)/i, ''); }
+  else if (/^(dim|°)/i.test(s))       { quality = 'diminished';     s = s.replace(/^(dim|°)/i, '');  }
+  else if (/^(aug|\+)/i.test(s))      { quality = 'augmented';      s = s.replace(/^(aug|\+)/i, ''); }
+  else if (/^(min|m(?!aj))/i.test(s)) { quality = 'minor';          s = s.replace(/^(min|m(?!aj))/i, ''); }
+
+  // Extensions
+  const extensions = [];
+  const susM = s.match(/sus([24])/i);
+  if (susM) { extensions.push({ num: parseInt(susM[1]), sus: true }); s = s.replace(susM[0], ''); }
+
+  if (/^(maj7|M7|Δ)/i.test(s)) {
+    extensions.push('maj7');
+    s = s.replace(/^(maj7|M7|Δ)/i, '');
+  } else if (/^7/.test(s)) {
+    if (quality === 'minor') extensions.push(7);
+    else quality = 'dominant';
+    s = s.slice(1);
+  }
+
+  let extM;
+  while ((extM = s.match(/^([b#]?)(\d+)/))) {
+    const num = parseInt(extM[2]);
+    const a   = extM[1] === 'b' ? 'flat' : extM[1] === '#' ? 'sharp' : null;
+    extensions.push(a ? { num, acc: a } : num);
+    s = s.slice(extM[0].length);
+  }
+  const addM = s.match(/add(\d+)/i);
+  if (addM) extensions.push({ num: parseInt(addM[1]), add: true });
+
+  return { degree, accidental, quality, extensions, bass, position: 'below' };
+}
+
+// Move the chord cursor to a specific position and populate the input.
+function cipMoveTo(barIdx, beatPos) {
+  const song = songs[state.song];
+  if (!song) return;
+  // Push undo before leaving the current position if something changed
+  if (CIP.dirty && CIP.barIdx !== null) _nipPushUndo();
+  CIP.barIdx  = barIdx;
+  CIP.beatPos = beatPos;
+  CIP.dirty   = false;
+  const bar      = song.bars[barIdx];
+  const existing = (bar.chordSymbols ?? []).find(c => Math.abs((c.beatOffset ?? 0) - beatPos) < 0.001);
+  const input    = document.getElementById('cip-input');
+  if (input) input.value = existing?.raw ?? '';
+  render();
+  _cipPositionInput();
+  if (input) { input.focus(); input.select(); }
+}
+
+function cipNavigate(dir) {
+  const song = songs[state.song];
+  if (!song || CIP.barIdx === null) return;
+  const all  = _cipAllPositions(song);
+  const cur  = all.findIndex(([bi, bp]) =>
+    bi === CIP.barIdx && Math.abs(bp - CIP.beatPos) < 0.001);
+  const next = cur + dir;
+  if (next < 0 || next >= all.length) return;
+  const [bi, bp] = all[next];
+  cipMoveTo(bi, bp);
+}
+
+function cipUpdateInput(raw) {
+  const song = songs[state.song];
+  if (!song || CIP.barIdx === null || CIP.beatPos === null) return;
+  const bar = song.bars[CIP.barIdx];
+  CIP.dirty = true;
+  // Remove any existing chord at this beat position
+  bar.chordSymbols = (bar.chordSymbols ?? []).filter(c =>
+    Math.abs((c.beatOffset ?? 0) - CIP.beatPos) > 0.001);
+  const parsed = parseChordInput(raw);
+  if (parsed) {
+    bar.chordSymbols.push({ ...parsed, raw, beatOffset: CIP.beatPos });
+    bar.chordSymbols.sort((a, b) => (a.beatOffset ?? 0) - (b.beatOffset ?? 0));
+  }
+  render();
+}
+
+function _cipPositionInput() {
+  const wrap = document.querySelector(`[data-bar-idx="${CIP.barIdx}"]`);
+  const inputWrap = document.getElementById('cip-input-wrap');
+  if (!wrap || !inputWrap) return;
+  const svg = wrap.querySelector('svg');
+  if (!svg) return;
+  const rect   = svg.getBoundingClientRect();
+  const vbArr  = svg.getAttribute('viewBox').split(' ').map(Number);
+  const vbW    = vbArr[2], vbH = vbArr[3];
+  const showTS = wrap.dataset.showTs === 'true';
+  const song   = songs[state.song];
+  if (!song) return;
+  const bar = song.bars[CIP.barIdx];
+  const laid = barNotePositions(bar, showTS, vbW);
+  const isPickup   = bar.pickup && bar.pickupBeats != null;
+  const beatOffset = isPickup ? bar.timeSignature.beats - bar.pickupBeats : 0;
+  const beatRange  = isPickup ? bar.pickupBeats : bar.timeSignature.beats;
+  const naleft  = (showTS ? L.NOTE_START : L.NOTE_START_NO_TS) + 22;
+  const naright = vbW - 18;
+  const vbX = beatToOpticalX(CIP.beatPos, laid, naleft, naright, beatOffset, beatRange);
+  const screenX = rect.left + (vbX / vbW) * rect.width;
+  const screenY = state.chordPos === 'above'
+    ? rect.top  + rect.height * 0.06
+    : rect.top  + rect.height * 0.84;
+  inputWrap.style.left    = `${screenX}px`;
+  inputWrap.style.top     = `${screenY - 13}px`;
+  inputWrap.style.display = 'block';
+}
+
+function cipActivate() {
+  CIP.active = true;
+  document.body.classList.add('cip-open');
+  document.getElementById('cipBtn')?.classList.add('active');
+  const song = songs[state.song];
+  if (song?.bars.length > 0) cipMoveTo(0, 0);
+  else render();
+}
+
+function cipDeactivate() {
+  if (CIP.dirty && CIP.barIdx !== null) _nipPushUndo();
+  CIP.active  = false;
+  CIP.barIdx  = null;
+  CIP.beatPos = null;
+  CIP.dirty   = false;
+  document.body.classList.remove('cip-open');
+  const iw = document.getElementById('cip-input-wrap');
+  if (iw) iw.style.display = 'none';
+  document.getElementById('cipBtn')?.classList.remove('active');
+  render();
+}
+
+// ── CIP input events ──────────────────────────────────────────────────────
+
+document.getElementById('cip-input-wrap')?.addEventListener('click', e => e.stopPropagation());
+
+document.getElementById('cip-input')?.addEventListener('input', e => {
+  cipUpdateInput(e.target.value);
+});
+
+document.getElementById('cip-input')?.addEventListener('keydown', e => {
+  const input = e.target;
+
+  if (e.key === 'Escape')  { cipDeactivate(); e.preventDefault(); return; }
+  if (e.key === ' ')       { cipNavigate(1);  e.preventDefault(); return; }
+  if (e.key === 'Enter')   { cipNavigate(1);  e.preventDefault(); return; }
+  if (e.key === 'Tab') {
+    cipNavigate(e.shiftKey ? -1 : 1); e.preventDefault(); return;
+  }
+  if (e.key === 'ArrowLeft' && input.selectionStart === 0 && input.selectionEnd === 0) {
+    cipNavigate(-1); e.preventDefault(); return;
+  }
+  if (e.key === 'ArrowRight' &&
+      input.selectionStart === input.value.length &&
+      input.selectionEnd   === input.value.length) {
+    cipNavigate(1); e.preventDefault(); return;
+  }
+  if (e.key === 'Backspace' && input.value === '') {
+    // Delete chord at current position and move back
+    const song = songs[state.song];
+    if (song && CIP.barIdx !== null) {
+      const bar = song.bars[CIP.barIdx];
+      _nipPushUndo();
+      bar.chordSymbols = (bar.chordSymbols ?? []).filter(c =>
+        Math.abs((c.beatOffset ?? 0) - CIP.beatPos) > 0.001);
+      CIP.dirty = false;
+      render();
+    }
+    cipNavigate(-1);
+    e.preventDefault();
+    return;
+  }
+});
+
+// Reposition input on scroll / resize
+window.addEventListener('scroll', () => { if (CIP.active && CIP.barIdx !== null) _cipPositionInput(); }, { passive: true });
+window.addEventListener('resize', () => { if (CIP.active && CIP.barIdx !== null) _cipPositionInput(); }, { passive: true });
+
+// Click outside score deactivates CIP (cip-input-wrap clicks already stop propagation via its own listener)
+document.addEventListener('click', e => {
+  if (!CIP.active) return;
+  if (e.target.closest('#cip-input-wrap')) return;
+  if (document.activeElement?.id === 'cip-input') return;
+  cipDeactivate();
+});
 
 // ── Keyboard handler ───────────────────────────────────────────────────────
 
