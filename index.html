@@ -2529,11 +2529,6 @@ function render() {
       );
       if (DOC.source === 'user') {
         barWrap.classList.add('bar-editable');
-        const editBtn = document.createElement('button');
-        editBtn.className   = 'bar-edit-btn';
-        editBtn.textContent = 'Edit';
-        editBtn.addEventListener('click', (e) => { e.stopPropagation(); openBarEditor(capturedIdx); });
-        barWrap.appendChild(editBtn);
         barWrap.addEventListener('click', e => {
           e.stopPropagation();
 
@@ -4003,61 +3998,102 @@ function _cipAllPositions(song) {
   return all;
 }
 
-// Parse Nashville chord text → structured chord object (or null).
-// Supports: [b|#][1-7][quality][extensions][/[b|#][1-7]]
-function parseChordInput(raw) {
-  let s = raw.trim();
-  if (!s) return null;
+// ── Multi-format chord parser: Nashville / Roman numeral / named note ─────
+// All formats produce the same canonical { degree, accidental, quality,
+// extensions, bass } object stored in scale-degree terms.
 
-  const rootM = s.match(/^([b#]?)([1-7])/);
-  if (!rootM) return null;
-  const accidental = rootM[1] === 'b' ? 'flat' : rootM[1] === '#' ? 'sharp' : null;
-  const degree     = parseInt(rootM[2]);
-  s = s.slice(rootM[0].length);
+const _NOTE_SEMI = {C:0, D:2, E:4, F:5, G:7, A:9, B:11};
 
-  // Extract bass before parsing quality (avoids 'sus' confusion)
+// Resolve a semitone (0–11) to { degree, accidental } in the given key.
+function _semiToScaleDeg(semi, key) {
+  const sc = MAJOR_INTERVALS.map(i => (KEY_SEMI[key] + i) % 12);
+  for (let d = 0; d < 7; d++) if (sc[d]          === semi) return { degree: d+1, accidental: null    };
+  for (let d = 0; d < 7; d++) if ((sc[d]-1+12)%12 === semi) return { degree: d+1, accidental: 'flat'  };
+  for (let d = 0; d < 7; d++) if ((sc[d]+1)   %12 === semi) return { degree: d+1, accidental: 'sharp' };
+  return null;
+}
+
+// Parse quality + extensions + optional bass from everything after the root.
+function _parseChordSuffix(s, degree, accidental, defaultQuality = 'major') {
+  // Grab bass first (avoids /sus confusion)
   let bass = null;
-  const slashM = s.match(/\/([b#]?)([1-7])$/);
-  if (slashM) {
-    const absB   = parseInt(slashM[2]);
-    const bAcc   = slashM[1] === 'b' ? 'flat' : slashM[1] === '#' ? 'sharp' : null;
-    const relDeg = ((absB - 1 - (degree - 1)) % 7 + 7) % 7 + 1;
-    bass = { degree: relDeg, accidental: bAcc };
-    s    = s.slice(0, s.length - slashM[0].length);
+  const nashBassM = s.match(/\/([b#]?)([1-7])$/);
+  const nameBassM = !nashBassM && s.match(/\/([A-G])([b#♭♯]{0,2})$/);
+  if (nashBassM) {
+    const relDeg = ((parseInt(nashBassM[2])-1-(degree-1))%7+7)%7+1;
+    bass = { degree: relDeg, accidental: nashBassM[1]==='b'?'flat':nashBassM[1]==='#'?'sharp':null };
+    s = s.slice(0, s.length - nashBassM[0].length);
+  } else if (nameBassM) {
+    const bShift = [...nameBassM[2]].reduce((n,c) => n+(c==='b'||c==='♭'?-1:c==='#'||c==='♯'?1:0), 0);
+    const bSemi  = ((_NOTE_SEMI[nameBassM[1]]??0) + bShift + 12) % 12;
+    const bDeg   = _semiToScaleDeg(bSemi, state.key);
+    if (bDeg) bass = { degree: ((bDeg.degree-1-(degree-1))%7+7)%7+1, accidental: bDeg.accidental };
+    s = s.slice(0, s.length - nameBassM[0].length);
   }
 
-  // Quality
-  let quality = 'major';
-  if      (/^(ø|m7b5)/i.test(s))     { quality = 'halfDiminished'; s = s.replace(/^(ø|m7b5)/i, ''); }
-  else if (/^(dim|°)/i.test(s))       { quality = 'diminished';     s = s.replace(/^(dim|°)/i, '');  }
-  else if (/^(aug|\+)/i.test(s))      { quality = 'augmented';      s = s.replace(/^(aug|\+)/i, ''); }
-  else if (/^(min|m(?!aj))/i.test(s)) { quality = 'minor';          s = s.replace(/^(min|m(?!aj))/i, ''); }
+  let quality = defaultQuality;
+  if      (/^(ø|m7b5)/i.test(s))     { quality='halfDiminished'; s=s.replace(/^(ø|m7b5)/i,''); }
+  else if (/^(dim|°)/i.test(s))       { quality='diminished';     s=s.replace(/^(dim|°)/i,'');  }
+  else if (/^(aug|\+)/i.test(s))      { quality='augmented';      s=s.replace(/^(aug|\+)/i,''); }
+  else if (/^(min|m(?!aj))/i.test(s)) { quality='minor';          s=s.replace(/^(min|m(?!aj))/i,''); }
+  else if (/^maj(?!7)/i.test(s))      { quality='major';          s=s.replace(/^maj(?!7)/i,''); }
 
-  // Extensions
   const extensions = [];
   const susM = s.match(/sus([24])/i);
-  if (susM) { extensions.push({ num: parseInt(susM[1]), sus: true }); s = s.replace(susM[0], ''); }
-
-  if (/^(maj7|M7|Δ)/i.test(s)) {
-    extensions.push('maj7');
-    s = s.replace(/^(maj7|M7|Δ)/i, '');
-  } else if (/^7/.test(s)) {
-    if (quality === 'minor') extensions.push(7);
-    else quality = 'dominant';
-    s = s.slice(1);
-  }
-
+  if (susM) { extensions.push({num:parseInt(susM[1]),sus:true}); s=s.replace(susM[0],''); }
+  if (/^(maj7|Δ7?)/i.test(s)) { extensions.push('maj7'); s=s.replace(/^(maj7|Δ7?)/i,''); }
+  else if (/^7/.test(s)) { if (quality==='minor') extensions.push(7); else quality='dominant'; s=s.slice(1); }
   let extM;
   while ((extM = s.match(/^([b#]?)(\d+)/))) {
-    const num = parseInt(extM[2]);
-    const a   = extM[1] === 'b' ? 'flat' : extM[1] === '#' ? 'sharp' : null;
-    extensions.push(a ? { num, acc: a } : num);
-    s = s.slice(extM[0].length);
+    const a = extM[1]==='b'?'flat':extM[1]==='#'?'sharp':null;
+    extensions.push(a ? {num:parseInt(extM[2]),acc:a} : parseInt(extM[2]));
+    s=s.slice(extM[0].length);
   }
   const addM = s.match(/add(\d+)/i);
-  if (addM) extensions.push({ num: parseInt(addM[1]), add: true });
+  if (addM) extensions.push({num:parseInt(addM[1]),add:true});
 
   return { degree, accidental, quality, extensions, bass, position: 'below' };
+}
+
+// Parse a chord string in any of three formats → canonical scale-degree object.
+// Nashville:  [b#]?[1-7][suffix]        e.g. 4m7, b7, #4dim, 1maj7/5
+// Roman:      [b#]?(I–VII)[suffix]      e.g. IVmaj7, bVII, vi, iv/VI
+// Named note: [A-G][b#]?[suffix]        e.g. Bm, F#7, Bb/D, Ebmaj7
+// Bass slash accepts both degree (/5) and note name (/G).
+function parseChordInput(raw) {
+  const t = raw.trim();
+  if (!t) return null;
+
+  // Named note: starts with uppercase A–G
+  if (/^[A-G]/.test(t)) {
+    const m = t.match(/^([A-G])([b♭]{1,2}|[#♯]{1,2})?(.*)$/);
+    if (!m) return null;
+    const semiShift = [...(m[2]??'')].reduce((n,c) =>
+      n+(c==='b'||c==='♭'?-1:c==='#'||c==='♯'?1:0), 0);
+    const deg = _semiToScaleDeg(((_NOTE_SEMI[m[1]]??0)+semiShift+12)%12, state.key);
+    if (!deg) return null;
+    return _parseChordSuffix(m[3], deg.degree, deg.accidental);
+  }
+
+  // Roman numeral: optional b/# then I–VII (any case)
+  const noAcc = (t[0]==='b'||t[0]==='#') ? t.slice(1) : t;
+  if (/^(VII|VI|V|IV|III|II|I|vii|vi|v|iv|iii|ii|i)/i.test(noAcc)) {
+    const m = t.match(/^([b#]?)(VII|VI|V|IV|III|II|I|vii|vi|v|iv|iii|ii|i)(.*)/);
+    if (!m) return null;
+    const ROMAN = {I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7};
+    const degree = ROMAN[m[2].toUpperCase()];
+    if (!degree) return null;
+    // Lowercase Roman numeral implies minor by convention
+    const defaultQ = m[2] === m[2].toLowerCase() ? 'minor' : 'major';
+    return _parseChordSuffix(m[3], degree,
+      m[1]==='b'?'flat':m[1]==='#'?'sharp':null, defaultQ);
+  }
+
+  // Nashville: [b#]?[1-7] + suffix
+  const m = t.match(/^([b#]?)([1-7])(.*)/);
+  if (!m) return null;
+  return _parseChordSuffix(m[3], parseInt(m[2]),
+    m[1]==='b'?'flat':m[1]==='#'?'sharp':null);
 }
 
 // Move the chord cursor to a specific position and populate the input.
@@ -4080,14 +4116,19 @@ function cipMoveTo(barIdx, beatPos) {
 
 function cipNavigate(dir) {
   const song = songs[state.song];
-  if (!song || CIP.barIdx === null) return;
-  const all  = _cipAllPositions(song);
-  const cur  = all.findIndex(([bi, bp]) =>
+  if (!song || CIP.barIdx === null || CIP.beatPos === null) return;
+  const all = _cipAllPositions(song);
+  let cur = all.findIndex(([bi, bp]) =>
     bi === CIP.barIdx && Math.abs(bp - CIP.beatPos) < 0.001);
+  if (cur === -1) {
+    // Current position not in grid — snap to bar boundary before navigating
+    if (dir > 0) cur = all.reduce((last, [bi], i) => bi === CIP.barIdx ? i : last, -1);
+    else         cur = all.findIndex(([bi]) => bi === CIP.barIdx);
+    if (cur === -1) return;
+  }
   const next = cur + dir;
   if (next < 0 || next >= all.length) return;
-  const [bi, bp] = all[next];
-  cipMoveTo(bi, bp);
+  cipMoveTo(...all[next]);
 }
 
 function cipUpdateInput(raw) {
